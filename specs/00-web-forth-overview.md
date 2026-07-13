@@ -20,6 +20,7 @@ Decided in discussion (2026-07-13):
 | Language | **TypeScript** (strict, TS `^6.0.3`) | Match Foldkit. |
 | Effect system | **Effect v4**, pinned **`4.0.0-beta.88`** | Version **dictated by Foldkit's `peerDependencies`** — `foldkit@0.128.0` (latest npm release, == vendored `main`) declares `effect: 4.0.0-beta.88` + `@effect/platform-browser: 4.0.0-beta.88`. Do **not** bump independently of Foldkit. Source lives in the `effect-smol` repo. |
 | UI framework | **Foldkit `0.128.0`** | Elm Architecture: Model / Message / Command / Subscription / Mount. Apps use `@foldkit/vite-plugin`; `create-foldkit-app` scaffolds. |
+| Editor | **CodeMirror 6** via Foldkit **`Mount.defineStream`** | Packages `@codemirror/{state,view,commands,language}`, vendored to `repos/codemirror/`. CM6 is TEA-shaped (immutable `EditorState`, transactions, `EditorView` projection). The imperative `EditorView` lives in a module registry (out of the Model); edits and a Mod-Enter keymap emit Messages. Full patterns: `specs/01-foldkit-patterns.md`. |
 | Repo shape | **Monorepo of packages** | pnpm workspaces (`packages/*`). |
 | Runtime / PM | **Node + pnpm** | Mirror Foldkit: `pnpm@11.8.0`, node `>=20.19 || >=22.12`. |
 | Test runner | **Vitest `^4.1.9`** via **`@effect/vitest@4.0.0-beta.88`** | Effect-aware. DOM tests via **`happy-dom`**. Foldkit exposes a `foldkit/test/vitest` entry. |
@@ -33,8 +34,9 @@ Core tension: authentic Forth state is a **big mutable `Int32Array`** (memory + 
 - **VM lives outside the Model**, behind an **Effect service** (mutable core inside).
 - **Run flow is a Command.** A `PressedRun` / `SubmittedInput` **Message** makes `update` return `[Model, Command]`; the Command is an **Effect** that executes the source against the `Vm` service, then yields follow-up **Messages** (`CompletedRun` / `FailedRun`) carrying output + a fresh stack/dict snapshot, which fold into the Model. Errors become Messages via `Effect.catch`, never crash the app.
 - **[§V] Invariant:** Effect is used only at the **outer-interpreter / top-level `EXECUTE` boundary** (inside the Command). The **inner `NEXT` loop is a plain `while` over the `Int32Array`** with a JS dispatch table — never per-instruction Effect. Errors escape the inner loop via sentinel/throw caught at the Command's Effect boundary.
+- **[§V] Invariant:** Mutable handles never enter the Model. `EditorView` (CM6) and `Vm` live outside the Schema Model. `EditorView` sits in a module-level registry keyed by `hostId` (the Model holds only `Option<hostId>`); `Vm` is an Effect service in the Command `R` channel. Only Schema **snapshots** cross into the Model via Messages, and the data-stack snapshot is a **copied `ReadonlyArray<number>`**, never the live `Int32Array`.
 
-*(The editor pane bridges a real editor into TEA via a **Mount** / **CustomElement** / **port** — see open Q5. Study `repos/foldkit/examples/` for the Command + Mount patterns; foldkit exports `command`, `mount`, `port`, `customElement`, `subscription`, `managedResource`.)*
+*(Editor bridge resolved: **CodeMirror 6** via **`Mount.defineStream`**. The imperative `EditorView` is constructed on the mount node; `updateListener` + `keymap` emit `ChangedSource` / `PressedRun`; `view.destroy()` on cleanup. External content is pushed in by a Command that dispatches a CM6 transaction to the registry-held view, never by re-mounting. Full patterns and citations: `specs/01-foldkit-patterns.md`; the `map` example is the vendored template.)*
 
 ## VM design **[§I]**
 
@@ -83,10 +85,10 @@ The `ui` package follows Foldkit idioms (enforced by Foldkit's lint + review): S
 2. ~~Foldkit effect-dispatch mechanism~~ — **Resolved: side effects are Commands** (`update` returns `[Model, Command]`; Command = Effect yielding Messages).
 3. Memory size / growth: fixed `Int32Array` size, or growable?
 4. Number bases (`BASE`, hex `$`)? v1 decimal only?
-5. Editor bridge: which real editor (CodeMirror?) and which Foldkit primitive wires it into TEA — `Mount`, `CustomElement`, or `port`? Does `@foldkit/ui` help?
+5. ~~Editor bridge~~. **Resolved: CodeMirror 6 via `Mount.defineStream`** (registry-held `EditorView`, snapshot-copy rule). See `specs/01-foldkit-patterns.md`. Remaining sub-detail: a Forth syntax-highlighting mode (`@codemirror/language` `StreamLanguage`), deferred to v2.
 6. Prelude: which words are bootstrapped **in Forth itself** vs primitives in TS?
 7. Persistence: save/load session or definitions?
 
 ## Vendored reference
 
-`repos/effect-smol/` (Effect v4 source; see `ai-docs/`, `LLMS.md`, `packages/effect`, `packages/atom`, `packages/platform-browser`, `packages/vitest`) and `repos/foldkit/` (`examples/`, `packages/foldkit`, `packages/create-foldkit-app`, `packages/vite-plugin-foldkit`, and its own `CLAUDE.md` of conventions). Read source over guessing — see `AGENTS.md`. Local skill: `.claude/skills/effect-ts`.
+`repos/effect-smol/` (Effect v4 source; see `ai-docs/`, `LLMS.md`, `packages/effect`, `packages/atom`, `packages/platform-browser`, `packages/vitest`), `repos/foldkit/` (`examples/`, `packages/foldkit`, `packages/create-foldkit-app`, `packages/vite-plugin-foldkit`, and its own `CLAUDE.md` of conventions), and `repos/codemirror/{state,view,commands,language}/` (CodeMirror 6). Read source over guessing — see `AGENTS.md`. Local skill: `.claude/skills/effect-ts`. Foldkit + CM6 UI patterns distilled with citations in `specs/01-foldkit-patterns.md`.
