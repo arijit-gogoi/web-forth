@@ -79,15 +79,19 @@ packages/
 
 The `ui` package follows Foldkit idioms (enforced by Foldkit's lint + review): Schema-typed Model, verb-past-tense Messages (`PressedKey`, `CompletedRun`), Commands verb-first (`RunSource`), `Match`/`M.tagsExhaustive` over `switch`, `Array<T>` (never `T[]`), no bracket indexing (`Array.get`/`Array.head`), `Option` for absence, no em dashes in prose. Full rules: `repos/foldkit/CLAUDE.md` + the local `.claude/skills/effect-ts` skill. Read those before writing `ui` code.
 
-## Open questions (park for grill/spec) **[§?]**
+## Open questions **[§?]**
 
-1. Cell addressing: byte offsets vs cell indices for `@ ! , here allot`?
-2. ~~Foldkit effect-dispatch mechanism~~ — **Resolved: side effects are Commands** (`update` returns `[Model, Command]`; Command = Effect yielding Messages).
-3. Memory size / growth: fixed `Int32Array` size, or growable?
-4. Number bases (`BASE`, hex `$`)? v1 decimal only?
-5. ~~Editor bridge~~. **Resolved: CodeMirror 6 via `Mount.defineStream`** (registry-held `EditorView`, snapshot-copy rule). See `specs/01-foldkit-patterns.md`. Remaining sub-detail: a Forth syntax-highlighting mode (`@codemirror/language` `StreamLanguage`), deferred to v2.
-6. Prelude: which words are bootstrapped **in Forth itself** vs primitives in TS?
-7. Persistence: save/load session or definitions?
+All engine sub-questions are resolved (grilled 2026-07-13; see `specs/02-engine-design.md` "Resolved defaults"). Recap:
+
+1. ~~Cell addressing~~ → **byte-addressed**, 32-bit cells over an `ArrayBuffer` (`02`).
+2. ~~Foldkit effect-dispatch~~ → **Commands** (`update` returns `[Model, Command]`).
+3. ~~Memory size / growth~~ → **fixed 256 KiB** (`02`).
+4. ~~Number bases~~ → **`BASE`, default decimal, `$` hex** (`02`).
+5. ~~Editor bridge~~ → **CodeMirror 6 via `Mount.defineStream`** (`01`). Forth syntax mode deferred to v2.
+6. ~~Prelude / control flow~~ → **minimal TS primitives + `prelude.fth`; v1 control flow as TS immediates** (`02`).
+7. **Persistence** (save/load definitions) → **v2**.
+
+Nothing blocks `/ck:spec`.
 
 ## Vendored reference
 

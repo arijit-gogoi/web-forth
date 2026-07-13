@@ -19,7 +19,7 @@ One `ArrayBuffer`, two aliasing views (platform endianness, consistent across bo
 - `cells: Int32Array` — cell access, `cell@(a) = cells[a >> 2]` (address must be 4-aligned).
 - `bytes: Uint8Array` — byte access for `c@ c!` and names.
 
-`MEM_SIZE` default `256 * 1024` (configurable). `CELL = 4`. Data and return stacks are **separate** `Int32Array`s (not in main memory) with index registers.
+`MEM_SIZE` default `256 * 1024` (configurable, not surfaced in the UI). `CELL = 4`. Data and return stacks are **separate** `Int32Array`s (not in main memory), **1024 cells each** (configurable), with index registers. Overflow throws `-3` (data) / `-5` (return).
 
 ```
 byte 0x00000  ┌────────────────────────┐
@@ -30,7 +30,7 @@ byte 0x00000  ┌─────────────────────
 0x3FFF8       │ exec harness (2 cells) │  [xt][HALT_xt] for execute()
 0x40000       └────────────────────────┘  MEM_SIZE
 
-data stack : Int32Array(256), dsp     return stack : Int32Array(256), rsp
+data stack : Int32Array(1024), dsp    return stack : Int32Array(1024), rsp
 ```
 
 Decisions (advisor-settled):
@@ -128,7 +128,7 @@ Only these must be JS. Everything else is bootstrapped in the prelude.
 | Group | Words |
 | --- | --- |
 | Inner | `DOCOL EXIT DOVAR DOCONST DODOES HALT EXECUTE` (routines; `EXECUTE` is also a word) |
-| Stack | `dup drop swap over rot ?dup nip tuck` (`?dup nip tuck` may move to prelude) |
+| Stack | `dup drop swap over rot` (`?dup nip tuck 2dup 2drop` live in the prelude) |
 | Arithmetic | `+ - * / mod /mod * negate 1+ 1-` |
 | Compare / logic | `= <> < > 0= 0< 0> and or xor invert` |
 | Return stack | `>r r> r@` |
@@ -198,11 +198,13 @@ Standard codes:
 | `-1` | `ABORT` | `abort` |
 | `-3` | stack overflow | push past capacity |
 | `-4` | stack underflow | pop empty |
+| `-5` | return stack overflow | `>r` past capacity |
+| `-6` | return stack underflow | `r>`/`EXIT` past base |
 | `-8` | dictionary overflow | `HERE` reaches exec harness |
 | `-13` | undefined word | `name ?` |
 | `-10` | division by zero | `/ mod /mod` with 0 |
 
-`ABORT` clears the data stack and sets `state=interpret`. The interpreter prints the message and stops processing the rest of the buffer (ABORT semantics), then returns.
+`ABORT` clears the data stack and sets `state=interpret`. The interpreter prints the message and stops processing the rest of the buffer (ABORT semantics), then returns. Message phrasing is informative (gforth-style): `Undefined word: foo`, `Stack underflow`, `Division by zero`.
 
 **Channel split (the reconciliation):**
 
@@ -216,7 +218,7 @@ Parse and print honor `base`. v1: signed integer in `base`, plus a `$` prefix fo
 
 ## Prelude (bootstrapped in Forth) **[§I]**
 
-A Forth source string `interpret`ed at boot, after primitives are installed. Defines higher-level words in Forth itself. Candidates:
+A `prelude.fth` file, bundled as raw text (Vite `?raw`) and `interpret`ed at boot after primitives are installed. Defines higher-level words in Forth itself. Candidates:
 
 - Stack/util: `?dup nip tuck 2dup 2drop 2swap over` (those not made primitive), `abs min max`, `0<> true false`.
 - Memory helpers: `variable constant` (if not primitive), `?`.
@@ -224,7 +226,7 @@ A Forth source string `interpret`ed at boot, after primitives are installed. Def
 
 **Control flow decision (v1).** `IF ELSE THEN`, `BEGIN UNTIL AGAIN`, `WHILE REPEAT`, `DO LOOP +LOOP` are immediate compiling words that emit `branch`/`?branch`/`(do)`/`(loop)` and backpatch. Two ways to author them:
 
-- **v1: implement as TypeScript immediate primitives.** Fewer moving parts, no bootstrap risk. Recommended for v1.
+- **v1 (decided): implement as TypeScript immediate primitives.** Fewer moving parts, no bootstrap risk.
 - **v2: reimplement in the Forth prelude** using `here`, `,`, `!`, and mark/resolve words, to demonstrate that Forth compiles its own control flow. Migrate once v1 is green.
 
 Backpatch shapes (either way):
@@ -285,11 +287,14 @@ interface Vm {
 - **v1**: memory + stacks + inner/outer interpreter + `: ;` + primitives + control flow (TS immediates) + `>r r>` + memory words + `THROW`/`ABORT` + `BASE`(+`$`) + comments + a small Forth prelude + `.s .` output. Editor = textarea (`01` §D). No CM6 yet.
 - **v2**: CM6 editor (`01` §C), `CREATE`/`DOES>`/`>BODY`, `CATCH`, `+LOOP ?DO WHILE REPEAT i j`, char literals + string words (`." s"`), `EVALUATE` + TIB-in-memory, control flow reimplemented in the prelude, `KEY`/`ACCEPT`, save/load (localStorage), Forth syntax mode (`@codemirror/language`).
 
-## Open sub-questions **[§?]**
+## Resolved defaults (grill, 2026-07-13) **[§C]**
 
-1. `?dup nip tuck 2dup ...` as primitives or prelude? (Leaning: minimal primitives, rest prelude.)
-2. Data-stack / return-stack capacity (256 each is a guess). Overflow code `-3`.
-3. `MEM_SIZE` default (256 KiB guess) and whether to surface it in the UI.
-4. Signed vs unsigned display for `.` vs `u.`; cell is `Int32` so `.` is signed.
-5. Should the prelude live in a `.fth` file compiled into the bundle, or a TS template string?
-6. Exact `messageFor(code)` text (match easyforth or gforth phrasing?).
+1. `?dup nip tuck 2dup 2drop` and other non-core stack words live in the **prelude**, not as primitives (minimal core).
+2. Data stack / return stack: **1024 cells each** (configurable). Overflow `-3` (data) / `-5` (return).
+3. `MEM_SIZE`: **256 KiB** (configurable), **not surfaced in the UI**.
+4. `.` is **signed**, `u.` is **unsigned** (cell is `Int32`). Standard.
+5. Prelude is a **`prelude.fth` file bundled raw** (Vite `?raw`), not a TS template string.
+6. Error messages are **informative, gforth-style** (`Undefined word: foo`, `Stack underflow`).
+7. v1 control flow (`IF/ELSE/THEN`, `BEGIN/UNTIL`, `DO/LOOP`) = **TypeScript immediate words**; reimplement in the prelude in v2.
+
+No engine sub-questions remain open. Items genuinely deferred to v2 are under Scope.
