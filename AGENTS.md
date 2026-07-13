@@ -3,7 +3,7 @@
 Web-Forth: an **authentic indirect-threaded (ITC) Forth** with a browser REPL.
 
 - **Engine**: TypeScript. Real fig-Forth structure — flat `Int32Array` memory (dictionary + code + data space), data + return stacks, `HERE`/`IP` registers, `DOCOL`/`EXIT`, indirect-threaded inner interpreter (`NEXT`). Genuine `@ ! , c@ c! here allot`, `EXECUTE`, `CREATE`/`DOES>`.
-- **Effects**: [Effect](https://effect.website) v4. Typed errors (`StackUnderflow`, `UndefinedWord`, …) as tagged errors; the VM is an `Effect.Service`. Effect is used at the **outer-interpreter / top-level EXECUTE boundary only** — never inside the `NEXT` loop (per-instruction Effect = death).
+- **Effects**: [Effect](https://effect.website) v4. The VM is an `Effect.Service`; Effect is used at the **outer-interpreter / top-level EXECUTE boundary only**, never inside the `NEXT` loop (per-instruction Effect = death). Forth errors use authentic `THROW`/`CATCH` (integer codes) and ride the success channel as `RunResult` data; only genuine VM faults (`ForthFault`) hit the Effect E-channel. See `specs/02-engine-design.md`.
 - **UI**: [Foldkit](https://foldkit.dev) — Elm Architecture (one immutable Model, one `update`). The Model holds **UI state + read-only snapshots** of the stack/dictionary for display; the mutable VM memory lives **outside** the Model behind the Effect seam. The **editor pane is CodeMirror 6** (itself TEA-shaped: immutable `EditorState`, transactions/`StateEffect`, `EditorView` projection), embedded as an imperative `EditorView` behind a Foldkit `Mount`/`ManagedResource`.
 
 ## Vendored source — READ-ONLY reference
