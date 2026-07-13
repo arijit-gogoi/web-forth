@@ -48,9 +48,9 @@ Core tension: authentic Forth state is a **big mutable `Int32Array`** (memory + 
 - **Dictionary:** linked headers (name + flags + code field + params), newest-first for shadowing. `IMMEDIATE` flag.
 - **`CREATE`/`DOES>`:** crown jewel — `CREATE` builds a header whose default behavior pushes PFA; `DOES>` rewrites the last word's code field to run the `DOES>` thread after pushing PFA. ITC makes this clean. **v2** (structure now, implement after v1).
 
-### Typed errors **[§I]** (Effect tagged errors)
+### Errors **[§I]**
 
-`StackUnderflow`, `StackOverflow`, `UndefinedWord`, `CompileOnly`, `DivByZero`, `AddrOutOfBounds`. The Run Command returns `Effect<Output, ForthError, Vm>` internally and folds failures into Messages.
+Authentic `THROW`/`CATCH` with integer codes (`-1` ABORT, `-3`/`-4` stack over/underflow, `-8` dict overflow, `-10` div-by-zero, `-13` undefined word). The outer interpreter (`QUIT`) catches, prints, `ABORT`s (clears the data stack), and continues. **Ordinary Forth errors ride the success channel as data** (`RunResult { output, throwCode }`); the Effect **E-channel (`ForthFault`) is reserved for genuine VM faults**. Full model + codes: `specs/02-engine-design.md`.
 
 ## Proposed package layout **[§I]** (draft — confirm in spec)
 
