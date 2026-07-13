@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# NOTE: repos/ is intentionally NOT ignored — it holds vendored subtree source.
