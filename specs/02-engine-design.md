@@ -2,7 +2,7 @@
 
 > Draft. Feeds `/ck:spec`. Section tags in **[§?]** mark where each item lands in root `SPEC.md`. Design doc: memory map, layouts, dispatch pseudocode, primitive/prelude lists, decisions. Not implementation. No em dashes (matches `01`).
 
-The engine is a **plain, mutable TypeScript core** (`class Forth`), with no Effect dependency. The Effect `Vm` service (`01`) is a thin wrapper over it. This keeps the inner loop tight, the core reusable in a headless CLI, and the [§V] "Effect only at the boundary" invariant structural.
+The engine is a **plain, mutable TypeScript core** (`class Forth`), with no Effect dependency. The Effect `Vm` service (`01`) is a thin wrapper over it. This keeps the inner loop tight, the core reusable in a headless CLI, and the [§V] "Effect only at the boundary" invariant structural. Packages (`00`): the pure core is **`@web-forth/engine`**; the `Vm` wrapper plus the Foldkit app are **`@web-forth/client`**; the headless REPL is **`@web-forth/cli`**. `client` and `cli` both depend on `engine`.
 
 ## Non-negotiables **[§C]**
 

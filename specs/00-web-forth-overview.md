@@ -52,16 +52,16 @@ Core tension: authentic Forth state is a **big mutable `Int32Array`** (memory + 
 
 Authentic `THROW`/`CATCH` with integer codes (`-1` ABORT, `-3`/`-4` stack over/underflow, `-8` dict overflow, `-10` div-by-zero, `-13` undefined word). The outer interpreter (`QUIT`) catches, prints, `ABORT`s (clears the data stack), and continues. **Ordinary Forth errors ride the success channel as data** (`RunResult { output, throwCode }`); the Effect **E-channel (`ForthFault`) is reserved for genuine VM faults**. Full model + codes: `specs/02-engine-design.md`.
 
-## Proposed package layout **[§I]** (draft — confirm in spec)
+## Package layout **[§I]**
 
 ```
 packages/
-  engine/     # pure VM: memory, stacks, inner (NEXT/DOCOL/EXIT), dict, outer, errors, prelude. No Foldkit dep.
-  ui/         # Foldkit app: Model/Message/update/view, editor + console + stack/dict panes; @foldkit/vite-plugin.
-  (repl/?)    # optional headless node CLI over engine, for testing without the browser.
+  engine/     # pure Forth VM: memory, stacks, inner (NEXT/DOCOL/EXIT), dict, outer, errors, prelude. TS only, no Effect/Foldkit.  @web-forth/engine
+  client/     # Foldkit + CM6 SPA: Model/Message/update/view, Vm service, editor + console + stack/dict panes; @foldkit/vite-plugin.  @web-forth/client
+  cli/        # headless node REPL over engine: interactive prompt + pipe .fth files.  @web-forth/cli
 ```
 
-`ui` depends on `engine`. The `Vm` Effect service can live in `engine` or a thin adapter consumed by `ui`'s Run Command.
+`client` and `cli` both depend on `engine`. The `Vm` Effect service lives in **`client`** (keeps `engine` Effect-free); `cli` drives the pure `Forth` core directly. No `shared` / `server`: web-forth is a browser-only static SPA, Forth runs entirely client-side. A `server` + `shared` (Effect RPC, now in core `effect`) would appear only for future share-links / collaboration / server-side persistence.
 
 ## v1 word-set **[§T]**
 
