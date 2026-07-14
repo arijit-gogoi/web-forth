@@ -8,6 +8,7 @@
   },
   "scripts": {
     "gen:prelude": "node scripts/gen-prelude.mjs",
+    "pretypecheck": "node scripts/gen-prelude.mjs",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/gen-prelude.mjs",
     "test": "vitest run"

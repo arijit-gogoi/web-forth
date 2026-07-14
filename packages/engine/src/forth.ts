@@ -84,6 +84,11 @@ export class Forth {
   doXt = 0
   loopXt = 0
 
+  // BASE is a real memory cell (authentic: `base @` / `base !` work), NOT a JS
+  // register. baseAddr is its PFA, cached at install. Single source of truth for the
+  // numeric base; decimal/hex/./u./.s/parseNumber all read it.
+  baseAddr = 0
+
   constructor(config: ForthConfig = {}) {
     this.mem = new Memory(config.memSize)
     this.regs = makeRegisters()
@@ -145,6 +150,11 @@ export class Forth {
     return at
   }
 
+  // Current numeric base, read from the BASE memory cell (single source of truth).
+  base(): number {
+    return this.mem.cellAt(this.baseAddr)
+  }
+
   // §V.15: guard a compile-only word. Throws -14 if run outside compile state.
   compileOnly(): void {
     if (this.regs.state !== STATE_COMPILE) {
@@ -186,7 +196,7 @@ export class Forth {
   // leading sign. Returns null if the token is not a valid number.
   parseNumber(token: string): number | null {
     if (token.length === 0) return null
-    let base = this.regs.base
+    let base = this.base()
     let s = token
     let sign = 1
     if (s.startsWith('-')) {
@@ -302,7 +312,7 @@ export class Forth {
     this.regs.dsp = 0
     this.regs.rsp = 0
     this.regs.state = STATE_INTERPRET
-    this.regs.base = 10
+    // BASE is a memory cell, recreated by installPrimitives during the reboot below.
     this.regs.toIn = 0
     this.regs.latest = 0
     this.regs.running = false
@@ -517,10 +527,10 @@ const installPrimitives = (f: Forth): void => {
 
   // --- I/O (output only, v1) ---
   def('.', () => {
-    f.emit(`${formatSigned(d.pop(), f.regs.base)} `)
+    f.emit(`${formatSigned(d.pop(), f.base())} `)
   })
   def('u.', () => {
-    f.emit(`${formatUnsigned(d.pop(), f.regs.base)} `)
+    f.emit(`${formatUnsigned(d.pop(), f.base())} `)
   })
   def('emit', () => {
     f.emit(String.fromCharCode(d.pop() & 0xff))
@@ -531,22 +541,39 @@ const installPrimitives = (f: Forth): void => {
   def('space', () => {
     f.emit(' ')
   })
+  // type ( addr len -- ) : print len bytes starting at addr.
+  def('type', () => {
+    const len = d.pop()
+    const addr = d.pop()
+    let s = ''
+    for (let i = 0; i < len; i++) s += String.fromCharCode(f.mem.byteAt(addr + i))
+    f.emit(s)
+  })
   def('.s', () => {
     // Non-destructive stack print: <n> a b c
     const depth = f.regs.dsp
+    const base = f.base()
     let s = `<${depth}> `
     for (let i = 0; i < depth; i++) {
-      s += `${(f.dstack.cells[i] as number).toString(f.regs.base)} `
+      s += `${(f.dstack.cells[i] as number).toString(base)} `
     }
     f.emit(s)
   })
 
-  // --- Numeric base ---
+  // --- Numeric base (a real memory cell; base @ / base ! work) ---
+  // Create BASE as a CREATE-class variable, cache its PFA, initialize to 10. This
+  // runs before loadPrelude() (whose literals need BASE=10 already set).
+  {
+    const cfa = f.dict.header('base')
+    f.mem.setCell(cfa, f.dovarIndex)
+    f.comma(0) // doesCodeAddr slot (2-slot CREATE layout, §V.11)
+    f.baseAddr = f.comma(10) // body cell = the base value, default decimal
+  }
   def('decimal', () => {
-    f.regs.base = 10
+    f.mem.setCell(f.baseAddr, 10)
   })
   def('hex', () => {
-    f.regs.base = 16
+    f.mem.setCell(f.baseAddr, 16)
   })
 
   // --- Compile-support runtime words (compiled into threads by the immediates) ---
@@ -633,6 +660,28 @@ const installPrimitives = (f: Forth): void => {
       f.compileOnly()
       f.comma(f.litXt)
       f.comma(d.pop())
+    },
+    true,
+  )
+  // ' ( "name" -- xt ) : push the xt of the next word (interpret-time tick).
+  def("'", () => {
+    const name = f.parseName()
+    if (name === null) throw new ForthThrow(THROW_UNDEFINED_WORD, "'")
+    const found = f.dict.find(name)
+    if (found === null) throw new ForthThrow(THROW_UNDEFINED_WORD, name)
+    d.push(found.xt)
+  })
+  // ['] (immediate, compile-only) ( "name" -- ) : compile the next word's xt as a literal.
+  def(
+    "[']",
+    () => {
+      f.compileOnly()
+      const name = f.parseName()
+      if (name === null) throw new ForthThrow(THROW_UNDEFINED_WORD, "[']")
+      const found = f.dict.find(name)
+      if (found === null) throw new ForthThrow(THROW_UNDEFINED_WORD, name)
+      f.comma(f.litXt)
+      f.comma(found.xt)
     },
     true,
   )

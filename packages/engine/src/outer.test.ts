@@ -135,7 +135,7 @@ describe('outer interpreter', () => {
     expect(f.regs.dsp).toBe(5)
     f.reset()
     expect(f.regs.dsp).toBe(0)
-    expect(f.regs.base).toBe(10)
+    expect(f.base()).toBe(10) // BASE cell restored to decimal
     // primitives still work after reset
     expect(f.interpret('2 3 *').stack).toEqual([6])
     // and the dictionary is intact

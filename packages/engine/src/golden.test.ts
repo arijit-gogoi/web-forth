@@ -177,6 +177,72 @@ describe('§V.4 snapshot is a detached copy', () => {
   })
 })
 
+// The machine-checkable form of "§I is realized": every v1 word the interface
+// promises must resolve in a fresh VM. This is the acceptance criterion for
+// "engine complete" and guards against silent word-set drift.
+describe('§I v1 word-set is fully installed', () => {
+  const V1_WORDS = [
+    // arith
+    '+', '-', '*', '/', 'mod', '=', '<>', '<', '>', '0=', '0<', '0>', 'and', 'or', 'xor', 'invert',
+    // stack
+    'dup', 'drop', 'swap', 'over', 'rot', '>r', 'r>',
+    // mem
+    '@', '!', 'c@', 'c!', '+!', ',', 'here', 'allot', 'cells', 'cell+', 'align', 'aligned',
+    // io
+    '.', '.s', 'u.', 'emit', 'cr', 'space', 'type',
+    // compile
+    ':', ';', '[', ']', 'immediate', 'literal', "'", "[']",
+    // control (immediate)
+    'if', 'else', 'then', 'begin', 'until', 'again', 'do', 'loop',
+    // base
+    'base', 'decimal', 'hex',
+    // comments
+    '(', '\\',
+    // sys
+    'bye', 'abort', 'throw',
+    // prelude
+    '?dup', 'nip', 'tuck', '2dup', '2drop', 'abs', 'min', 'max', 'negate', '1+', '1-',
+    '0<>', 'true', 'false', 'variable', 'constant', 'spaces',
+  ]
+
+  test('every §I v1 word resolves in a fresh VM', () => {
+    const f = new Forth()
+    const missing = V1_WORDS.filter((w) => f.dict.find(w) === null)
+    expect(missing).toEqual([])
+  })
+})
+
+describe("§I words: type, base, ' , [']", () => {
+  test('type prints bytes from memory', () => {
+    const f = new Forth()
+    // write "Hi" into the dictionary and type it
+    const r = f.interpret('here 72 over c! 1+ 105 over c! drop  here 2 type')
+    expect(r.output).toBe('Hi') // 72=H 105=i
+  })
+
+  test('base is a real cell: base @ reads it, base ! sets it', () => {
+    const f = new Forth()
+    expect(f.interpret('base @').stack).toEqual([10])
+    const g = new Forth()
+    // set base to 2 (binary), then 101 parses as 5
+    expect(g.interpret('2 base ! 101 decimal .').output).toBe('5 ')
+  })
+
+  test("' pushes an xt that EXECUTE could run (here: it is a valid address)", () => {
+    const f = new Forth()
+    const r = f.interpret("' dup")
+    expect(r.stack.length).toBe(1)
+    expect(r.stack[0]).toBe(f.dict.find('dup')!.xt)
+  })
+
+  test("['] compiles a word's xt as a literal", () => {
+    const f = new Forth()
+    // : xt-of-dup ['] dup ;  returns dup's xt when run
+    f.interpret(": xt-of-dup ['] dup ;")
+    expect(f.interpret('xt-of-dup').stack).toEqual([f.dict.find('dup')!.xt])
+  })
+})
+
 describe('VM faults vs Forth errors (§I.lib contract)', () => {
   test('a genuine ForthFault propagates; a Forth error does not', () => {
     const f = new Forth()
