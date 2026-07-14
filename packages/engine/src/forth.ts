@@ -356,6 +356,12 @@ export class Forth {
     this.regs.rsp = 0
     this.regs.running = false
     this.regs.state = STATE_INTERPRET
+    // §B.2: the leave/case compile scratch lives on the instance, not the data stack,
+    // so dsp=0 does not clear it. A THROW mid-definition must drop any half-open loop's
+    // leave-list (§V.26) and case's exit-list (§V.27), or the next endof/endcase/leave
+    // guard sees a stale list and mis-compiles.
+    this.leaveLists.length = 0
+    this.caseExits.length = 0
   }
 
   // §I.lib: a COPY of the live data stack (§V.4), bottom-to-top.
