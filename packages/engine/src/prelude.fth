@@ -9,6 +9,8 @@
 : tuck swap over ;
 : 2dup over over ;
 : 2drop drop drop ;
+\ -rot ( a b c -- c a b ) : inverse of rot. Two rots rotate the other way.
+: -rot rot rot ;
 
 \ --- Comparison / flags ---
 : 0<> 0= 0= ;
