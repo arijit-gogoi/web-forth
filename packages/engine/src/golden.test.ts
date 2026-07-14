@@ -183,9 +183,9 @@ describe('§V.4 snapshot is a detached copy', () => {
 describe('§I v1 word-set is fully installed', () => {
   const V1_WORDS = [
     // arith
-    '+', '-', '*', '/', 'mod', '=', '<>', '<', '>', '0=', '0<', '0>', 'and', 'or', 'xor', 'invert',
+    '+', '-', '*', '/', 'mod', '/mod', '=', '<>', '<', '>', '0=', '0<', '0>', 'and', 'or', 'xor', 'invert',
     // stack
-    'dup', 'drop', 'swap', 'over', 'rot', '>r', 'r>',
+    'dup', 'drop', 'swap', 'over', 'rot', '>r', 'r>', 'r@',
     // mem
     '@', '!', 'c@', 'c!', '+!', ',', 'here', 'allot', 'cells', 'cell+', 'align', 'aligned',
     // io
