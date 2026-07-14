@@ -135,7 +135,7 @@ export const forthStreamParser: StreamParser<ForthTokenState> = {
   token,
 }
 
-export const forthLanguage = StreamLanguage.define(forthStreamParser)
+const forthLanguage = StreamLanguage.define(forthStreamParser)
 
 // The editor extension bundle for Forth: the language plus the One Dark theme. oneDark
 // bundles the editor chrome and a matched dark highlight style that colors the standard

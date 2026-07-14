@@ -7,8 +7,8 @@ import { Forth, STATE_COMPILE } from '@web-forth/engine'
 // A gforth-style prompt acknowledgement. Interactive Forth prints " ok" after a line
 // that leaves the interpreter in interpret state; a line that opens a colon definition
 // stays in compile state and gets a continuation prompt instead.
-export const OK = 'ok'
-export const COMPILE_PROMPT = 'compiled'
+const OK = 'ok'
+const COMPILE_PROMPT = 'compiled'
 
 export interface FeedResult {
   // Text to print for this line: the run output, then a status word. No trailing
@@ -56,10 +56,6 @@ export class Repl {
       throwCode: result.throwCode,
       compiling,
     }
-  }
-
-  reset(): void {
-    this.forth.reset()
   }
 }
 

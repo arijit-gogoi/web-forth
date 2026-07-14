@@ -16,7 +16,7 @@ import { STORAGE_KEY } from './persistence'
 // constructors; the app uses four visual states via matchDataSplitEmpty (idle, loading,
 // failure, data). Data channel = RunData (output + stack + throwCode); error channel =
 // the ForthFault message string.
-export const ConsoleAsyncData = AsyncData.Schema(RunData, S.String)
+const ConsoleAsyncData = AsyncData.Schema(RunData, S.String)
 
 // maybeEditorHostId (§V.3/§V.19): the CM6 EditorView is a mutable handle kept in the
 // module registry (view/editorHost.ts), NEVER in the Model. The Model holds only this
