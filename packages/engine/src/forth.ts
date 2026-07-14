@@ -9,17 +9,44 @@
 // but here Dictionary reserves first, then Inner writes HALT there. Do not add an
 // allot to Inner or the boot cell is double-reserved (phantom cell at 4).
 
-import { Dictionary } from './dictionary'
-import { ForthThrow, THROW_DIV_ZERO } from './errors'
+import {
+  Dictionary,
+  FLAG_HIDDEN,
+  FLAG_IMMEDIATE,
+  LENFLAGS_OFFSET,
+  NAME_LEN_MASK,
+  NAME_OFFSET,
+} from './dictionary'
+import {
+  ForthFault,
+  ForthThrow,
+  THROW_DIV_ZERO,
+  THROW_UNDEFINED_WORD,
+} from './errors'
 import { DOCOL, DOCONST, DOVAR, EXIT, Inner, type Routine } from './inner'
 import { CELL, Memory } from './memory'
-import { makeRegisters, type Registers } from './registers'
+import { makeRegisters, STATE_INTERPRET, type Registers } from './registers'
 import { makeDataStack, makeReturnStack, type Stack } from './stack'
 
 export interface ForthConfig {
   readonly memSize?: number
   readonly stackCells?: number
   readonly stepBudget?: number
+}
+
+// §I.lib: interpret() result. Forth errors ride this success channel as data
+// (throwCode non-null + output text); genuine VM faults throw ForthFault instead.
+export interface RunResult {
+  readonly output: string
+  readonly throwCode: number | null
+  readonly stack: ReadonlyArray<number>
+}
+
+// §I.lib: one dictionary entry for the inspector pane.
+export interface WordInfo {
+  readonly name: string
+  readonly immediate: boolean
+  readonly hidden: boolean
 }
 
 export class Forth {
@@ -34,11 +61,11 @@ export class Forth {
   output = ''
 
   // Routine indices for the inner-interpreter behaviors, kept for compiling colon
-  // words and CREATE-class headers later (§T.9).
-  readonly docolIndex: number
-  readonly exitIndex: number
-  readonly dovarIndex: number
-  readonly doconstIndex: number
+  // words and CREATE-class headers later (§T.9). Assigned by boot().
+  docolIndex = 0
+  exitIndex = 0
+  dovarIndex = 0
+  doconstIndex = 0
 
   constructor(config: ForthConfig = {}) {
     this.mem = new Memory(config.memSize)
@@ -49,13 +76,16 @@ export class Forth {
     this.dict = new Dictionary(this.mem, this.regs)
     // Inner writes HALT into the reserved boot cell (never allots).
     this.inner = new Inner(this.mem, this.regs, this.dstack, this.rstack, config.stepBudget)
+    this.boot()
+  }
 
-    // Register the inner behaviors so colon/CREATE headers can name them.
+  // Register the inner behaviors and install every primitive. Called at construction
+  // and by reset(); code[] already holds just HALT (index 0) at this point.
+  private boot(): void {
     this.docolIndex = this.inner.addRoutine(DOCOL)
     this.exitIndex = this.inner.addRoutine(EXIT)
     this.dovarIndex = this.inner.addRoutine(DOVAR)
     this.doconstIndex = this.inner.addRoutine(DOCONST)
-
     installPrimitives(this)
   }
 
@@ -76,6 +106,164 @@ export class Forth {
   execute(xt: number): void {
     this.inner.execute(xt)
   }
+
+  // --- Outer interpreter (text interpreter / QUIT), §T.7 ---
+
+  // Skip whitespace, collect to the next whitespace, advance >IN. Null at end.
+  parseName(): string | null {
+    const src = this.regs.source
+    let i = this.regs.toIn
+    while (i < src.length && isSpace(src.charCodeAt(i))) i++
+    if (i >= src.length) {
+      this.regs.toIn = i
+      return null
+    }
+    const start = i
+    while (i < src.length && !isSpace(src.charCodeAt(i))) i++
+    this.regs.toIn = i
+    return src.slice(start, i)
+  }
+
+  // Collect up to `delim` (not skipping leading space), advance past it. Used by
+  // ( ) comments and string words. Returns the text between >IN and the delimiter.
+  parse(delim: string): string {
+    const src = this.regs.source
+    const code = delim.charCodeAt(0)
+    const start = this.regs.toIn
+    let i = start
+    while (i < src.length && src.charCodeAt(i) !== code) i++
+    const text = src.slice(start, i)
+    this.regs.toIn = i < src.length ? i + 1 : i // step past the delimiter if present
+    return text
+  }
+
+  // Parse a signed integer in the current BASE, honoring a `$` hex prefix and a
+  // leading sign. Returns null if the token is not a valid number.
+  parseNumber(token: string): number | null {
+    if (token.length === 0) return null
+    let base = this.regs.base
+    let s = token
+    let sign = 1
+    if (s.startsWith('-')) {
+      sign = -1
+      s = s.slice(1)
+    } else if (s.startsWith('+')) {
+      s = s.slice(1)
+    }
+    if (s.startsWith('$')) {
+      base = 16
+      s = s.slice(1)
+    }
+    if (s.length === 0) return null
+    let value = 0
+    for (let i = 0; i < s.length; i++) {
+      const digit = digitValue(s.charCodeAt(i))
+      if (digit < 0 || digit >= base) return null
+      value = value * base + digit
+    }
+    return (sign * value) | 0
+  }
+
+  // §I.lib: interpret a whole source buffer, returning a RunResult. Forth errors do
+  // not throw out of here; they are caught, and (in §T.8) printed + ABORTed. Genuine
+  // VM faults (ForthFault) propagate as exceptions (§V.5). §T.7 uses a stub catch
+  // that records the code and returns; §T.8 fills abort()/messages.
+  interpret(source: string): RunResult {
+    this.regs.source = source
+    this.regs.toIn = 0
+    this.output = ''
+    try {
+      for (;;) {
+        const name = this.parseName()
+        if (name === null) break
+        const found = this.dict.find(name)
+        if (found) {
+          this.execute(found.xt)
+        } else {
+          const n = this.parseNumber(name)
+          if (n === null) {
+            throw new ForthThrow(THROW_UNDEFINED_WORD, name)
+          }
+          this.dstack.push(n)
+        }
+      }
+      return { output: this.output, throwCode: null, stack: this.stackSnapshot() }
+    } catch (e) {
+      if (e instanceof ForthThrow) {
+        // §T.8 will abort() + append a gforth-style message here. Stub: record the
+        // code and return so the outer loop never leaks a Forth error as a JS throw.
+        this.handleThrow(e)
+        return { output: this.output, throwCode: e.code, stack: this.stackSnapshot() }
+      }
+      throw e // ForthFault or any genuine VM fault -> Effect E-channel (§V.5)
+    }
+  }
+
+  // Error handling hook. §T.8 replaces the body with abort() + gforth messages.
+  // Stub for §T.7: reset interpreter state so the instance stays usable.
+  protected handleThrow(_e: ForthThrow): void {
+    this.regs.dsp = 0
+    this.regs.rsp = 0
+    this.regs.running = false
+    this.regs.state = STATE_INTERPRET
+  }
+
+  // §I.lib: a COPY of the live data stack (§V.4), bottom-to-top.
+  stackSnapshot(): ReadonlyArray<number> {
+    const depth = this.regs.dsp
+    const out = new Array<number>(depth)
+    for (let i = 0; i < depth; i++) out[i] = this.dstack.cells[i] as number
+    return out
+  }
+
+  // §I.lib: dictionary entries newest-first, for the inspector pane.
+  dictSnapshot(): ReadonlyArray<WordInfo> {
+    const out: Array<WordInfo> = []
+    let link = this.regs.latest
+    while (link !== 0) {
+      const lenflags = this.mem.byteAt(link + LENFLAGS_OFFSET)
+      const len = lenflags & NAME_LEN_MASK
+      let name = ''
+      for (let i = 0; i < len; i++) {
+        name += String.fromCharCode(this.mem.byteAt(link + NAME_OFFSET + i))
+      }
+      out.push({
+        name,
+        immediate: (lenflags & FLAG_IMMEDIATE) !== 0,
+        hidden: (lenflags & FLAG_HIDDEN) !== 0,
+      })
+      link = this.mem.cellAt(link)
+    }
+    return out
+  }
+
+  // §I.lib: reset the VM to a fresh boot state (re-installs primitives).
+  reset(): void {
+    this.regs.dsp = 0
+    this.regs.rsp = 0
+    this.regs.state = STATE_INTERPRET
+    this.regs.base = 10
+    this.regs.toIn = 0
+    this.regs.latest = 0
+    this.regs.running = false
+    this.mem.here = 0
+    this.output = ''
+    // Re-run the boot sequence: reset code[] to just HALT, reserve the addr-0 boot
+    // cell (Dictionary owns it), then re-register behaviors + primitives.
+    this.inner.installHalt()
+    this.dict.reserveBootCell()
+    this.boot()
+  }
+}
+
+const isSpace = (c: number): boolean => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d
+
+// ASCII digit value: 0-9 -> 0-9, A-Z/a-z -> 10-35. -1 if not a digit char.
+const digitValue = (c: number): number => {
+  if (c >= 0x30 && c <= 0x39) return c - 0x30
+  if (c >= 0x41 && c <= 0x5a) return c - 0x41 + 10
+  if (c >= 0x61 && c <= 0x7a) return c - 0x61 + 10
+  return -1
 }
 
 // Format a cell value in the current BASE (signed). Used by `.`.

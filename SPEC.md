@@ -66,7 +66,7 @@ T3|x|engine: data+return stacks 1024 cells + push/pop + over/underflow throw|V9
 T4|x|engine: dictionary header build + FIND (case-insensitive) + LATEST + smudge/immediate flags|V11
 T5|x|engine: inner interpreter — code[] table, NEXT trampoline + step-budget watchdog, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8,V14
 T6|x|engine: primitives — stack/arith/compare/logic/mem/return-stack/io|I.lib
-T7|.|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT|V8,V9,V10
+T7|x|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT|V8,V9,V10
 T8|.|engine: ForthThrow unwind + top-level CATCH + ABORT + gforth-style messages|V5,V9,V10
 T9|.|engine: compile mode : ; [ ] immediate + lit/branch/?branch + control-flow immediates (if/else/then, begin/until/again, do/loop) + compile-only guard|V11,V15
 T10|.|engine: comments ( ) \\ + prelude.fth + codegen prelude.generated.ts (const PRELUDE) at build (node+browser+vitest) + boot load (fail → ForthFault)|C,V16

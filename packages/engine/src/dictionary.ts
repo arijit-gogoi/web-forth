@@ -50,10 +50,15 @@ export class Dictionary {
   constructor(mem: Memory, regs: Registers) {
     this.mem = mem
     this.regs = regs
-    // Reserve address 0 so no header link field ever collides with the
-    // empty/end-of-chain sentinel. here now points past the boot cell.
-    if (mem.here < BOOT_RESERVED) {
-      mem.allot(BOOT_RESERVED - mem.here)
+    this.reserveBootCell()
+  }
+
+  // Reserve address 0 (the boot cell) so no header link field ever collides with the
+  // empty/end-of-chain sentinel. Idempotent-ish: only advances here if it is still
+  // below the boot region (fresh or just-reset). §T.5 installs HALT into this cell.
+  reserveBootCell(): void {
+    if (this.mem.here < BOOT_RESERVED) {
+      this.mem.allot(BOOT_RESERVED - this.mem.here)
     }
   }
 

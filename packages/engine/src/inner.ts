@@ -66,6 +66,14 @@ export class Inner {
     this.mem.setCell(HALT_XT, this.haltIndex)
   }
 
+  // Reset the code table to just HALT (index 0) and rewrite the boot cell. Used by
+  // Forth.reset() before re-installing primitives, so routines do not accumulate.
+  installHalt(): void {
+    this.code.length = 0
+    this.code.push(HALT)
+    this.mem.setCell(HALT_XT, this.haltIndex)
+  }
+
   // Register a behavior routine, returning its index (the value stored in a CFA).
   addRoutine(routine: Routine): number {
     this.code.push(routine)
