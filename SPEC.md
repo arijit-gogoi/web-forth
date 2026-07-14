@@ -27,6 +27,9 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 - lib: `@web-forth/engine` exports `class Forth`. `interpret(source): RunResult`, `stackSnapshot(): ReadonlyArray<number>`, `dictSnapshot(): ReadonlyArray<WordInfo>`, `reset(): void`. `RunResult = { output: string, throwCode: number|null, stack: ReadonlyArray<number> }`. ⊥ throw for Forth errors; throws `ForthFault` for VM faults only.
 - svc: `Vm` Effect service (∈ client) wraps `Forth`. `interpret(src) → Effect<RunResult, ForthFault>`, `stackSnapshot`, `dictSnapshot`, `reset`. provided app-wide `Layer<Vm>` (foldkit `resources`).
 - forth Core words: arith `+ - * / mod = <> < > 0= 0< 0> and or xor invert`; stack `dup drop swap over rot >r r>`; mem `@ ! c@ c! +! , here allot cells cell+ align aligned`; io `. .s u. emit cr space type`; compile `: ; [ ] immediate literal ' [']`; control (immediate) `if else then begin until again do loop`; base `base decimal hex` + `$hex`; comments `( )` `\`; sys `bye abort throw`. prelude adds `?dup nip tuck 2dup 2drop abs min max negate 1+ 1- 0<> true false variable constant space spaces`.
+- forth Extended words: `catch` (`( xt -- code )`, nested→nearest); control `+loop ?do i j while repeat`; strings `s" ." char [char]`; `evaluate ( c-addr u -- )`. (Core `throw` gains authentic `catch` semantics.)
+- Extended editor: CM6 `EditorView` via `Mount.defineStream` replaces the textarea; feeds same `UpdatedSource`/`PressedRun` facts + `LoadExample` Command. Optional Forth syntax mode (`@codemirror/language`).
+- Extended persistence: editor buffer text autosaved (debounced) → `localStorage` key `web-forth.source`, restored @ boot ∈ `init`. ⊥ dictionary state (re-run reconstructs words).
 
 ## §R RESEARCH
 
@@ -56,6 +59,11 @@ V13: ⊥ concurrent `Vm.interpret` (shared mutable core). `update` ignores `Clic
 V14: inner loop enforces step budget. exceed → `THROW -28` (keeps main thread responsive). Extended → Web Worker for true interrupt.
 V15: compile-only words (control-flow immediates: `;` if/then/…) self-check `state`; run @ `state==interpret` → `THROW -14`. no header flag (lenflags byte full: 0x80|0x40|0x3F); guard ∈ each word.
 V16: `prelude.fth` `interpret`s @ boot with `throwCode==null`; else fatal `ForthFault` (⊥ silent half-init).
+V17: (Extended) `catch ( xt -- code )` saves dsp+rsp depths before running xt; on `ForthThrow` restores both depths + pushes code (0 = clean exit). `throw 0` = no-op (⊥ unwind, ANS). nested `catch` → nearest.
+V18: (Extended) `evaluate ( c-addr u -- )` saves + restores exec-harness region + `>IN`/`source` around the nested interpret (harness non-reentrant, §V.8). ⊥ leak nested parse state to caller.
+V19: (Extended) CM6 `EditorView` (mutable handle) ∉ Model (extends §V.3). lives ∈ module registry keyed `hostId`; Model holds ! `Option<hostId>`. external writes → Command dispatches CM6 transaction (⊥ re-mount; mount args captured @ mount ∴ seed arg named `initialDoc`). unmount → `view.destroy()` + registry delete.
+V20: (Extended) compiled `s"`/`."` store bytes inline ∈ definition thread; `(s")` runtime reads inline count + bytes, pushes `( c-addr u )`, advances `ip` past the cell-aligned byte payload (precedent: `lit`). ⊥ transient side-buffer, ⊥ `'c'` shortcut (`char`/`[char]` for char codes).
+V21: (Extended) persistence fail-silent — `localStorage` quota/disabled → no-op Message, ⊥ crash the run loop. autosave debounced on edit; buffer text only.
 
 ## §T TASKS
 
@@ -80,9 +88,14 @@ T15|x|client: RunSource Command (reads Vm, ignored while Loading) → CompletedR
 T16|x|client: Core textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
 T17|x|client: console pane (AsyncData Idle/Running/Ok/Err, keyed) + data-stack pane + dictionary pane|V3,V4
 T18|x|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + snapshot render|V3
-T19|.|Extended: CM6 editor via Mount.defineStream + editorHost registry + LoadExample Command|R2,V3
+T19|.|Extended: CM6 editor plain — Mount.defineStream + editorHost registry + LoadExample Command (⊥ syntax mode yet)|R2,V3,V19
 T20|.|Extended: CREATE/DOES>/>BODY + DODOES|V11
-T21|.|Extended: CATCH + +LOOP ?DO i j WHILE REPEAT + char lit + strings ." s" + EVALUATE/TIB + localStorage save/load + CM6 Forth syntax mode|-
+T21|.|Extended: CATCH/THROW authentic — `catch ( xt -- code )`, nested→nearest, `throw 0` no-op|V17
+T22|.|Extended: control-flow completion — `+loop ?do i j while repeat`|V15
+T23|.|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline ∈ thread via `(s")`, ⊥ transient buf, ⊥ `'c'`|V20
+T24|.|Extended: EVALUATE + TIB-in-memory — nested text interpret|V18
+T25|.|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3
+T26|.|Extended: CM6 Forth syntax mode (`@codemirror/language`)|R2
 
 ## §B BUGS
 
