@@ -73,11 +73,11 @@ T10|x|engine: comments ( ) \\ + prelude.fth + codegen prelude.generated.ts (cons
 T11|x|engine: RunResult + stackSnapshot(copy) + dictSnapshot + reset; unit tests plain vitest, easyforth golden cases|I.lib,V4
 T12|x|cli: node REPL over Forth (interactive + pipe .fth)|I.cli
 T13|x|client: Vm Effect service (serialize interpret) + Layer<Vm> over Forth; verify effect v4 Effect.Service/Layer + @effect/vitest API vs repos/effect-smol; channel tests|I.svc,V2,V5,V13
-T14|.|client: foldkit app skeleton (Model/Message/init/update/view/entry) + Runtime.makeApplication+run|R4
-T15|.|client: RunSource Command (reads Vm, ignored while Loading) → CompletedRun{output,stack,throwCode} / FailedRun|R3,V5,V13
-T16|.|client: v1 textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
-T17|.|client: console pane (AsyncData Idle/Running/Ok/Err, keyed) + data-stack pane + dictionary pane|V3,V4
-T18|.|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + snapshot render|V3
+T14|x|client: foldkit app skeleton (Model/Message/init/update/view/entry) + Runtime.makeApplication+run|R4
+T15|x|client: RunSource Command (reads Vm, ignored while Loading) → CompletedRun{output,stack,throwCode} / FailedRun|R3,V5,V13
+T16|x|client: v1 textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
+T17|x|client: console pane (AsyncData Idle/Running/Ok/Err, keyed) + data-stack pane + dictionary pane|V3,V4
+T18|x|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + snapshot render|V3
 T19|.|v2: CM6 editor via Mount.defineStream + editorHost registry + LoadExample Command|R2,V3
 T20|.|v2: CREATE/DOES>/>BODY + DODOES|V11
 T21|.|v2: CATCH + +LOOP ?DO i j WHILE REPEAT + char lit + strings ." s" + EVALUATE/TIB + localStorage save/load + CM6 Forth syntax mode|-

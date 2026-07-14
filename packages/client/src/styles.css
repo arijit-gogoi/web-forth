@@ -1,0 +1,179 @@
+/* web-forth client styles (SPEC.md §T.18). Plain CSS, no utility framework. A three
+   column flex layout: editor | console | inspector. Terminal aesthetic. */
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #1e1e2e;
+  --panel: #181825;
+  --border: #313244;
+  --text: #cdd6f4;
+  --muted: #7f849c;
+  --accent: #89b4fa;
+  --error: #f38ba8;
+  --immediate: #f9e2af;
+  --mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, 'SFMono-Regular', Menlo,
+    Consolas, monospace;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+#root {
+  height: 100vh;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.pane.editor {
+  flex: 1 1 40%;
+}
+
+.pane.console {
+  flex: 1 1 35%;
+}
+
+.pane.inspector {
+  flex: 1 1 25%;
+  border-right: none;
+  overflow-y: auto;
+}
+
+.pane-header {
+  padding: 8px 12px;
+  font-weight: 700;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.editor-input {
+  flex: 1 1 auto;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 12px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.run-button,
+.reset-button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--mono);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reset-button {
+  background: transparent;
+  color: var(--muted);
+}
+
+.run-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.console-output,
+.console-idle,
+.console-loading,
+.console-fault,
+.console-data {
+  padding: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+}
+
+.console-idle,
+.console-loading {
+  color: var(--muted);
+}
+
+.console-error {
+  color: var(--error);
+}
+
+.console-fault {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.stack-list,
+.dict-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stack-item {
+  padding: 2px 8px;
+  background: var(--bg);
+  border-radius: 3px;
+}
+
+.stack-empty,
+.dict-empty {
+  padding: 8px 12px;
+  color: var(--muted);
+}
+
+.dict-list {
+  flex-flow: row wrap;
+  gap: 4px;
+}
+
+.dict-item {
+  padding: 2px 8px;
+  background: var(--bg);
+  border-radius: 3px;
+  color: var(--text);
+}
+
+.dict-immediate {
+  color: var(--immediate);
+}
