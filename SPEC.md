@@ -49,12 +49,12 @@ V6: `@ !` require cell-aligned addr (`a & 3 = 0`). debug build asserts.
 V7: alloc (`,` `allot` header) reaching exec-harness region → `THROW -8`.
 V8: `execute()` non-reentrant (single scratch). outer interpreter runs tokens in order. nested `EVALUATE` ⊥ till v2.
 V9: over/underflow → `THROW -3/-4` (data), `-5/-6` (return); div-by-0 → `-10`; undefined word → `-13`; compile-only word in interpret → `-14`; step-budget exceeded → `-28`.
-V10: `ABORT` clears data stack + `state=interpret`. interpreter prints gforth-style msg + continues.
+V10: `ABORT` clears data + return stacks (dsp=rsp=0) + `state=interpret` + `running=false`. interpreter prints gforth-style msg + continues.
 V11: colon CFA = [DOCOL]; CREATE-class CFA = [DOVAR][doesCodeAddr] (2-slot, DOES>-ready); `>BODY` = CFA+2·CELL for CREATE words.
 V12: client follows foldkit idioms (Schema Model, `Match`, `Array<T>`, ⊥ bracket index, ⊥ em dash). lint-enforced.
 V13: ⊥ concurrent `Vm.interpret` (shared mutable core). `update` ignores `ClickedRun`/`PressedRun` while console `AsyncData==Loading`; Vm serializes interpret.
 V14: inner loop enforces step budget. exceed → `THROW -28` (keeps main thread responsive). v2 → Web Worker for true interrupt.
-V15: outer interpreter rejects compile-only words when `state==interpret` → `THROW -14`.
+V15: compile-only words (control-flow immediates: `;` if/then/…) self-check `state`; run @ `state==interpret` → `THROW -14`. no header flag (lenflags byte full: 0x80|0x40|0x3F); guard ∈ each word.
 V16: `prelude.fth` `interpret`s @ boot with `throwCode==null`; else fatal `ForthFault` (⊥ silent half-init).
 
 ## §T TASKS
@@ -66,9 +66,9 @@ T3|x|engine: data+return stacks 1024 cells + push/pop + over/underflow throw|V9
 T4|x|engine: dictionary header build + FIND (case-insensitive) + LATEST + smudge/immediate flags|V11
 T5|x|engine: inner interpreter — code[] table, NEXT trampoline + step-budget watchdog, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8,V14
 T6|.|engine: primitives — stack/arith/compare/logic/mem/return-stack/io|I.lib
-T7|.|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT, compile-only guard|V8,V9,V10,V15
+T7|.|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT|V8,V9,V10
 T8|.|engine: ForthThrow unwind + top-level CATCH + ABORT + gforth-style messages|V5,V9,V10
-T9|.|engine: compile mode : ; [ ] immediate + lit/branch/?branch + control-flow immediates (if/else/then, begin/until/again, do/loop)|V11
+T9|.|engine: compile mode : ; [ ] immediate + lit/branch/?branch + control-flow immediates (if/else/then, begin/until/again, do/loop) + compile-only guard|V11,V15
 T10|.|engine: comments ( ) \\ + prelude.fth + codegen prelude.generated.ts (const PRELUDE) at build (node+browser+vitest) + boot load (fail → ForthFault)|C,V16
 T11|.|engine: RunResult + stackSnapshot(copy) + dictSnapshot + reset; unit tests plain vitest, easyforth golden cases|I.lib,V4
 T12|.|cli: node REPL over Forth (interactive + pipe .fth)|I.cli
@@ -85,3 +85,4 @@ T21|.|v2: CATCH + +LOOP ?DO i j WHILE REPEAT + char lit + strings ." s" + EVALUA
 ## §B BUGS
 
 id|date|cause|fix
+B1|2026-07-14|`ForthThrow` unwinds JS stack ⊥ run pending `EXIT`s ∴ `rsp` dirty mid-colon → next `interpret()` misbehaves. §V.10 now ! abort reset dsp+rsp+running.
