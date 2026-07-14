@@ -4,8 +4,9 @@
 // browser only confirms the colors render and the T19/T25 behaviors still work.
 
 import { StringStream } from '@codemirror/language'
+import { Forth } from '@web-forth/engine'
 import { describe, expect, test } from 'vitest'
-import { forthStreamParser } from './forthLanguage'
+import { KEYWORDS, forthStreamParser } from './forthLanguage'
 
 // Tokenize one line into [tokenType | null, text] pairs. Mirrors how CodeMirror drives the
 // parser: repeatedly call token(), reading stream.current() for the consumed text. Guards
@@ -53,6 +54,12 @@ describe('keywords and definitions (§T.26)', () => {
 
   test('control-flow words are keywords', () => {
     for (const word of ['if', 'else', 'then', 'begin', 'until', 'do', 'loop', '?do', '+loop']) {
+      expect(types(word)).toEqual(['keyword'])
+    }
+  })
+
+  test('case-family and recurse/leave are keywords', () => {
+    for (const word of ['case', 'of', 'endof', 'endcase', 'recurse', 'leave']) {
       expect(types(word)).toEqual(['keyword'])
     }
   })
@@ -112,6 +119,29 @@ describe('strings (§T.26)', () => {
     const pairs = tokenize(': t s" hi" 42 ;')
     expect(pairs).toContainEqual(['string', 's" hi"'])
     expect(pairs).toContainEqual(['number', '42'])
+  })
+})
+
+// §V.28 highlighter honesty: the KEYWORDS set the tokenizer paints must be a SUBSET of
+// the words the engine actually answers (primitives + prelude + immediates). This guard
+// runs the engine's OWN case-insensitive FIND for every keyword, so the highlighter can
+// never colour a word that would THROW -13 at run time. It asserts one direction only
+// (every keyword is an engine word); the reverse (every engine word is a keyword) is not
+// required. This is the check that keeps `recurse`/`leave`/`case`... from drifting back
+// to highlighted-but-absent.
+describe('KEYWORDS are a subset of engine words (§V.28)', () => {
+  test('every highlighted keyword resolves in a fresh engine', () => {
+    const f = new Forth()
+    const missing = [...KEYWORDS].filter((kw) => f.dict.find(kw) === null)
+    expect(missing).toEqual([])
+  })
+
+  test('FIND is case-insensitive, matching the tokenizer lowercasing', () => {
+    // The tokenizer lowercases before the KEYWORDS lookup; the engine FIND folds case
+    // too, so an upper-case source keyword resolves to the same word.
+    const f = new Forth()
+    expect(f.dict.find('RECURSE')).not.toBeNull()
+    expect(f.dict.find('EndCase')).not.toBeNull()
   })
 })
 

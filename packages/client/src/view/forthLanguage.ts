@@ -16,7 +16,9 @@ import { oneDark } from '@codemirror/theme-one-dark'
 
 // Structural / compiling words get the keyword tag. Kept deliberately small: user words and
 // ordinary prelude words fall through to the default token (no highlight), which is correct.
-const KEYWORDS = new Set<string>([
+// Exported for the §V.28 subset guard test (forthLanguage.test.ts), which asserts every
+// entry resolves in the engine so a highlighted word can never be one the engine THROWs on.
+export const KEYWORDS = new Set<string>([
   ':',
   ';',
   'if',
@@ -32,6 +34,10 @@ const KEYWORDS = new Set<string>([
   'loop',
   '+loop',
   'leave',
+  'case',
+  'of',
+  'endof',
+  'endcase',
   'immediate',
   'variable',
   'constant',

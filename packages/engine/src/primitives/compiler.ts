@@ -9,7 +9,7 @@
 // f as *Xt). The immediates are compile-only (§V.15); their backpatch targets are
 // absolute addresses kept on the data stack during compilation.
 
-import { ForthThrow, THROW_COMPILE_ONLY, THROW_UNDEFINED_WORD } from '../errors'
+import { ForthFault, ForthThrow, THROW_COMPILE_ONLY, THROW_UNDEFINED_WORD } from '../errors'
 import { CELL } from '../memory'
 import { STATE_COMPILE, STATE_INTERPRET } from '../registers'
 import type { Forth } from '../forth'
@@ -257,7 +257,17 @@ export const installControlFlow = (f: Forth): void => {
   installConditionals(f)
   installBeginLoops(f)
   installDoLoops(f)
+  installCase(f)
   installComments(f)
+}
+
+// The xt of an already-installed core word, for an immediate that compiles a call to
+// it. Core is installed before the control-flow immediates, so these never miss; a
+// null would be a build defect, so it faults loudly rather than compiling garbage.
+const coreXt = (f: Forth, name: string): number => {
+  const found = f.dict.find(name)
+  if (found === null) throw new ForthFault(`case: core word '${name}' missing at install`)
+  return found.xt
 }
 
 const installConditionals = (f: Forth): void => {
@@ -450,6 +460,75 @@ const resolveLoopExits = (f: Forth, skipSlot: number): void => {
   if (list !== undefined) {
     for (const cell of list) f.mem.setCell(cell, f.mem.here)
   }
+}
+
+// --- case / of / endof / endcase (Standard, §V.27). Compile-time immediates that
+// backpatch through the data stack (of's next-clause branch) plus a JS-side exit-list
+// (endof's past-endcase branches). Each path drops the selector exactly once: a
+// matched clause drops it in `of`, the fall-through drops it in `endcase`. ---
+const installCase = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
+  // case (immediate, compile-only) : no code; open an exit-list for the endofs.
+  def(
+    'case',
+    () => {
+      f.compileOnly()
+      f.caseExits.push([]) // §V.27: collect this case's endof exit branches
+    },
+    true,
+  )
+  // of (immediate, compile-only) ( -- of-slot ) : compile `over = ?branch F drop` —
+  // test the selector against the of-value WITHOUT consuming it (over), and on a
+  // mismatch branch past this clause (F, resolved by endof to the next test). The
+  // `drop` on the match path consumes the selector before the clause body runs
+  // (§V.27); omit it and the body would see the selector still underneath. Push F.
+  def(
+    'of',
+    () => {
+      f.compileOnly()
+      f.comma(coreXt(f, 'over'))
+      f.comma(coreXt(f, '='))
+      f.comma(f.qbranchXt)
+      const ofSlot = f.comma(0) // mismatch jumps here-resolved-to-next-test
+      f.comma(coreXt(f, 'drop')) // match path: drop the selector
+      d.push(ofSlot)
+    },
+    true,
+  )
+  // endof (immediate, compile-only) ( of-slot -- ) : end a clause body. Compile an
+  // unconditional branch past endcase (E, recorded for endcase to resolve), then
+  // resolve this clause's of-slot to here so a mismatch lands on the NEXT of-test.
+  def(
+    'endof',
+    () => {
+      f.compileOnly()
+      f.comma(f.branchXt)
+      const exit = f.comma(0)
+      const list = f.caseExits[f.caseExits.length - 1]
+      if (list === undefined) throw new ForthThrow(THROW_COMPILE_ONLY, 'endof outside case')
+      list.push(exit)
+      f.mem.setCell(d.pop(), f.mem.here) // of's mismatch branch -> next test
+    },
+    true,
+  )
+  // endcase (immediate, compile-only) : close the case. Compile `drop` FIRST — the
+  // fall-through path (no clause matched) still has the selector on the stack — THEN
+  // resolve every endof exit to just after that drop (§V.27). Order is load-bearing:
+  // resolving before the drop would route matched clauses (which already dropped in
+  // `of`) through this drop too, double-dropping. Exactly one selector drop per path.
+  def(
+    'endcase',
+    () => {
+      f.compileOnly()
+      const list = f.caseExits.pop()
+      if (list === undefined) throw new ForthThrow(THROW_COMPILE_ONLY, 'endcase without case')
+      f.comma(coreXt(f, 'drop')) // fall-through: drop the unmatched selector
+      for (const exit of list) f.mem.setCell(exit, f.mem.here) // endofs land past the drop
+    },
+    true,
+  )
 }
 
 const installComments = (f: Forth): void => {

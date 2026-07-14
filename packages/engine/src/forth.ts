@@ -105,6 +105,13 @@ export class Forth {
   // nesting must not collide with the [skipSlot, loopTop] compile-stack cells.
   readonly leaveLists: Array<Array<number>> = []
 
+  // §V.27: compile-time stack of case-exit lists, one entry per open `case`. Each
+  // collects the forward-branch cells emitted by `endof` (all jumping past endcase);
+  // `endcase` pops the entry and patches them to just-after its fall-through drop. A
+  // JS list (variable length + nesting) for the same reason as leaveLists; `of` still
+  // backpatches its own next-clause branch through the data stack (§V.27).
+  readonly caseExits: Array<Array<number>> = []
+
   // BASE is a real memory cell (authentic: `base @` / `base !` work), NOT a JS
   // register. baseAddr is its PFA, cached at install. Single source of truth for the
   // numeric base; decimal/hex/./u./.s/parseNumber all read it.
@@ -392,6 +399,7 @@ export class Forth {
     this.mem.here = 0
     this.output = ''
     this.leaveLists.length = 0 // drop any half-open loop's leave-list (§V.26)
+    this.caseExits.length = 0 // drop any half-open case's exit-list (§V.27)
     // Re-run the boot sequence: reset code[] to just HALT, reserve the addr-0 boot
     // cell (Dictionary owns it), then re-register behaviors + primitives.
     this.inner.installHalt()
