@@ -33,5 +33,6 @@ export const THROW_DICT_OVERFLOW = -8 // §V.7 alloc reaches exec-harness region
 export const THROW_INVALID_ADDR = -9 // memory address out of range
 export const THROW_DIV_ZERO = -10 // §V.9 division by zero (/ mod /mod)
 export const THROW_UNDEFINED_WORD = -13 // §V.9 outer interpreter: word not found and not a number
+export const THROW_COMPILE_ONLY = -14 // §V.15 compile-only word run in interpret state
 export const THROW_UNALIGNED = -23 // §V.6 cell access on a non-CELL-aligned address
 export const THROW_STEP_BUDGET = -28 // §V.9/§V.14 inner-loop step budget exceeded

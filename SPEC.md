@@ -26,7 +26,7 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 - cli: `web-forth` node REPL. interactive prompt; pipe `.fth` file → run + print stack/output. dep engine only.
 - lib: `@web-forth/engine` exports `class Forth`. `interpret(source): RunResult`, `stackSnapshot(): ReadonlyArray<number>`, `dictSnapshot(): ReadonlyArray<WordInfo>`, `reset(): void`. `RunResult = { output: string, throwCode: number|null, stack: ReadonlyArray<number> }`. ⊥ throw for Forth errors; throws `ForthFault` for VM faults only.
 - svc: `Vm` Effect service (∈ client) wraps `Forth`. `interpret(src) → Effect<RunResult, ForthFault>`, `stackSnapshot`, `dictSnapshot`, `reset`. provided app-wide `Layer<Vm>` (foldkit `resources`).
-- forth v1 words: arith `+ - * / mod = <> < > 0= 0< 0> and or xor invert`; stack `dup drop swap over rot >r r>`; mem `@ ! c@ c! +! , here allot cells cell+ align aligned`; io `. .s u. emit cr space type`; compile `: ; [ ] immediate ' [']`; control (immediate) `if else then begin until again do loop`; base `base decimal hex` + `$hex`; comments `( )` `\`; sys `bye abort throw`. prelude adds `?dup nip tuck 2dup 2drop abs min max negate 1+ 1- 0<> true false variable constant space spaces`.
+- forth v1 words: arith `+ - * / mod = <> < > 0= 0< 0> and or xor invert`; stack `dup drop swap over rot >r r>`; mem `@ ! c@ c! +! , here allot cells cell+ align aligned`; io `. .s u. emit cr space type`; compile `: ; [ ] immediate literal ' [']`; control (immediate) `if else then begin until again do loop`; base `base decimal hex` + `$hex`; comments `( )` `\`; sys `bye abort throw`. prelude adds `?dup nip tuck 2dup 2drop abs min max negate 1+ 1- 0<> true false variable constant space spaces`.
 
 ## §R RESEARCH
 
@@ -68,7 +68,7 @@ T5|x|engine: inner interpreter — code[] table, NEXT trampoline + step-budget w
 T6|x|engine: primitives — stack/arith/compare/logic/mem/return-stack/io|I.lib
 T7|x|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT|V8,V9,V10
 T8|x|engine: ForthThrow unwind + top-level catch handler (interpreter) + ABORT + gforth-style messages|V5,V9,V10
-T9|.|engine: compile mode : ; [ ] immediate + lit/branch/?branch + control-flow immediates (if/else/then, begin/until/again, do/loop) + compile-only guard|V11,V15
+T9|x|engine: compile mode : ; [ ] immediate + lit/branch/?branch + control-flow immediates (if/else/then, begin/until/again, do/loop) + compile-only guard|V11,V15
 T10|.|engine: comments ( ) \\ + prelude.fth + codegen prelude.generated.ts (const PRELUDE) at build (node+browser+vitest) + boot load (fail → ForthFault)|C,V16
 T11|.|engine: RunResult + stackSnapshot(copy) + dictSnapshot + reset; unit tests plain vitest, easyforth golden cases|I.lib,V4
 T12|.|cli: node REPL over Forth (interactive + pipe .fth)|I.cli

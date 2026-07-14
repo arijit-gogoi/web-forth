@@ -17,11 +17,21 @@ import {
   NAME_LEN_MASK,
   NAME_OFFSET,
 } from './dictionary'
-import { ForthThrow, THROW_DIV_ZERO, THROW_UNDEFINED_WORD } from './errors'
+import {
+  ForthThrow,
+  THROW_COMPILE_ONLY,
+  THROW_DIV_ZERO,
+  THROW_UNDEFINED_WORD,
+} from './errors'
 import { DOCOL, DOCONST, DOVAR, EXIT, Inner, type Routine } from './inner'
 import { CELL, Memory } from './memory'
 import { messageFor, THROW_ABORT } from './messages'
-import { makeRegisters, STATE_INTERPRET, type Registers } from './registers'
+import {
+  makeRegisters,
+  STATE_COMPILE,
+  STATE_INTERPRET,
+  type Registers,
+} from './registers'
 import { makeDataStack, makeReturnStack, type Stack } from './stack'
 
 export interface ForthConfig {
@@ -63,6 +73,15 @@ export class Forth {
   dovarIndex = 0
   doconstIndex = 0
 
+  // XTs (CFA addresses) of the compile-support words, captured at install so the
+  // compiler can append them into threads (§T.9). Must be xts, not routine indices.
+  litXt = 0
+  branchXt = 0
+  qbranchXt = 0
+  exitXt = 0
+  doXt = 0
+  loopXt = 0
+
   constructor(config: ForthConfig = {}) {
     this.mem = new Memory(config.memSize)
     this.regs = makeRegisters()
@@ -101,6 +120,20 @@ export class Forth {
   // Drive one xt to completion (via the inner harness). Primitives may ForthThrow.
   execute(xt: number): void {
     this.inner.execute(xt)
+  }
+
+  // Append one cell to the dictionary at HERE (compile a value / xt into a thread).
+  comma(value: number): number {
+    const at = this.mem.allot(CELL)
+    this.mem.setCell(at, value)
+    return at
+  }
+
+  // §V.15: guard a compile-only word. Throws -14 if run outside compile state.
+  compileOnly(): void {
+    if (this.regs.state !== STATE_COMPILE) {
+      throw new ForthThrow(THROW_COMPILE_ONLY, 'compile-only word')
+    }
   }
 
   // --- Outer interpreter (text interpreter / QUIT), §T.7 ---
@@ -174,13 +207,25 @@ export class Forth {
         if (name === null) break
         const found = this.dict.find(name)
         if (found) {
-          this.execute(found.xt)
+          // §V.11 compile semantics: in compile state, non-immediate words are
+          // appended to the current definition; immediate words run now.
+          if (this.regs.state === STATE_COMPILE && !found.immediate) {
+            this.comma(found.xt)
+          } else {
+            this.execute(found.xt)
+          }
         } else {
           const n = this.parseNumber(name)
           if (n === null) {
             throw new ForthThrow(THROW_UNDEFINED_WORD, name)
           }
-          this.dstack.push(n)
+          if (this.regs.state === STATE_COMPILE) {
+            // Compile a literal: lit reads the next inline cell at run time.
+            this.comma(this.litXt)
+            this.comma(n)
+          } else {
+            this.dstack.push(n)
+          }
         }
       }
       return { output: this.output, throwCode: null, stack: this.stackSnapshot() }
@@ -488,6 +533,179 @@ const installPrimitives = (f: Forth): void => {
     f.regs.base = 16
   })
 
+  // --- Compile-support runtime words (compiled into threads by the immediates) ---
+  // lit: push the next inline cell and step ip past it.
+  f.litXt = def('lit', (v) => {
+    v.dstack.push(v.mem.cellAt(v.regs.ip))
+    v.regs.ip += CELL
+  })
+  // branch: unconditional jump; target is the next inline cell (absolute address).
+  f.branchXt = def('branch', (v) => {
+    v.regs.ip = v.mem.cellAt(v.regs.ip)
+  })
+  // ?branch: pop a flag; branch if zero (false), else skip the target cell.
+  f.qbranchXt = def('?branch', (v) => {
+    const flag = v.dstack.pop()
+    if (flag === 0) {
+      v.regs.ip = v.mem.cellAt(v.regs.ip)
+    } else {
+      v.regs.ip += CELL
+    }
+  })
+  // (do): runtime of DO. ( limit index -- ) push both onto the return stack.
+  f.doXt = def('(do)', (v) => {
+    const index = v.dstack.pop()
+    const limit = v.dstack.pop()
+    v.rstack.push(limit)
+    v.rstack.push(index)
+  })
+  // (loop): runtime of LOOP. Increment index; if index < limit, branch back to the
+  // loop top (next inline cell); else drop the loop control and continue. i/j and
+  // +loop are v2 (§T.21); this ships plain do..loop.
+  f.loopXt = def('(loop)', (v) => {
+    const index = v.rstack.pop() + 1
+    const limit = v.rstack.pop()
+    if (index < limit) {
+      v.rstack.push(limit)
+      v.rstack.push(index)
+      v.regs.ip = v.mem.cellAt(v.regs.ip) // branch to loop top
+    } else {
+      v.regs.ip += CELL // skip the loop-top target, exit the loop
+    }
+  })
+
+  // --- Defining + state words ---
+  // : ( "name" -- ) create a colon header (CFA=DOCOL), smudge it, enter compile.
+  def(':', () => {
+    const name = f.parseName()
+    if (name === null) throw new ForthThrow(THROW_UNDEFINED_WORD, ':')
+    const cfa = f.dict.header(name)
+    f.mem.setCell(cfa, f.docolIndex)
+    f.dict.setHidden(f.regs.latest, true) // hide until ; (§V.11)
+    f.regs.state = STATE_COMPILE
+  })
+  // ; (immediate, compile-only) compile EXIT, reveal the word, leave compile.
+  def(
+    ';',
+    () => {
+      f.compileOnly() // §V.15
+      f.comma(f.exitXt)
+      f.dict.setHidden(f.regs.latest, false)
+      f.regs.state = STATE_INTERPRET
+    },
+    true,
+  )
+  // [ (immediate) leave compile; ] enter compile.
+  def(
+    '[',
+    () => {
+      f.regs.state = STATE_INTERPRET
+    },
+    true,
+  )
+  def(']', () => {
+    f.regs.state = STATE_COMPILE
+  })
+  // immediate: mark the latest word immediate.
+  def('immediate', () => {
+    f.dict.setImmediate(f.regs.latest, true)
+  })
+  // literal (immediate, compile-only) ( n -- ) : compile n as an inline literal.
+  def(
+    'literal',
+    () => {
+      f.compileOnly()
+      f.comma(f.litXt)
+      f.comma(d.pop())
+    },
+    true,
+  )
+
+  // --- Control-flow immediates (compile-only; §V.15). Backpatch targets are
+  // absolute addresses, kept on the data stack during compilation. ---
+  // if: compile ?branch + a placeholder target; push the placeholder's address.
+  def(
+    'if',
+    () => {
+      f.compileOnly()
+      f.comma(f.qbranchXt)
+      d.push(f.comma(0)) // reserve target cell; leave its addr for then/else
+    },
+    true,
+  )
+  // else: compile branch + placeholder; resolve if's target to here; push new addr.
+  def(
+    'else',
+    () => {
+      f.compileOnly()
+      f.comma(f.branchXt)
+      const elseSlot = f.comma(0)
+      const ifSlot = d.pop()
+      f.mem.setCell(ifSlot, f.mem.here) // if jumps here when false
+      d.push(elseSlot)
+    },
+    true,
+  )
+  // then: resolve the pending target (if or else) to here.
+  def(
+    'then',
+    () => {
+      f.compileOnly()
+      const slot = d.pop()
+      f.mem.setCell(slot, f.mem.here)
+    },
+    true,
+  )
+  // begin: push here (loop top) for until/again.
+  def(
+    'begin',
+    () => {
+      f.compileOnly()
+      d.push(f.mem.here)
+    },
+    true,
+  )
+  // until: compile ?branch back to the begin target (loops while flag is false).
+  def(
+    'until',
+    () => {
+      f.compileOnly()
+      f.comma(f.qbranchXt)
+      f.comma(d.pop())
+    },
+    true,
+  )
+  // again: compile an unconditional branch back to begin (infinite loop).
+  def(
+    'again',
+    () => {
+      f.compileOnly()
+      f.comma(f.branchXt)
+      f.comma(d.pop())
+    },
+    true,
+  )
+  // do: compile (do); push here (loop top) for loop to branch back to.
+  def(
+    'do',
+    () => {
+      f.compileOnly()
+      f.comma(f.doXt)
+      d.push(f.mem.here)
+    },
+    true,
+  )
+  // loop: compile (loop) + the loop-top target.
+  def(
+    'loop',
+    () => {
+      f.compileOnly()
+      f.comma(f.loopXt)
+      f.comma(d.pop())
+    },
+    true,
+  )
+
   // --- System ---
   def('bye', () => {
     f.regs.running = false
@@ -501,4 +719,7 @@ const installPrimitives = (f: Forth): void => {
   def('abort', () => {
     throw new ForthThrow(THROW_ABORT)
   })
+
+  // Capture EXIT's xt for ; to compile. EXIT the word (distinct from the routine).
+  f.exitXt = def('exit', EXIT)
 }
