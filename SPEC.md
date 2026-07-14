@@ -53,7 +53,7 @@ V6: `@ !` require cell-aligned addr (`a & 3 = 0`). debug build asserts.
 V7: alloc (`,` `allot` header) reaching exec-harness region → `THROW -8`.
 V8: `execute()` non-reentrant (single scratch). outer interpreter runs tokens in order. nested `EVALUATE` ⊥ till Extended.
 V9: over/underflow → `THROW -3/-4` (data), `-5/-6` (return); div-by-0 → `-10`; undefined word → `-13`; compile-only word in interpret → `-14`; step-budget exceeded → `-28`.
-V10: `ABORT` clears data + return stacks (dsp=rsp=0) + `state=interpret` + `running=false`. interpreter prints gforth-style msg + continues.
+V10: `ABORT` clears data + return stacks (dsp=rsp=0) + `state=interpret` + `running=false` + JS-side compile scratch (`leaveLists` §V26, `caseExits` §V27 — instance-held, ∴ dsp=0 ⊥ heal them, unlike the data-stack `[skipSlot,loopTop]` frame). interpreter prints gforth-style msg + continues. ⊥ clear scratch → THROW mid-def leaves stale list → next `endof`/`endcase`/`leave` guard defeated (§B.2).
 V11: colon CFA = [DOCOL]; CREATE-class CFA = [DOVAR][doesCodeAddr] (2-slot, DOES>-ready); `>BODY` = CFA+2·CELL for CREATE words.
 V12: client follows foldkit idioms (Schema Model, `Match`, `Array<T>`, ⊥ bracket index, ⊥ em dash). lint-enforced.
 V13: ⊥ concurrent `Vm.interpret` (shared mutable core). `update` ignores `ClickedRun`/`PressedRun` while console `AsyncData==Loading`; Vm serializes interpret.
@@ -117,3 +117,4 @@ T30|x|Standard: `case of endof endcase` immediates (of match-drop, endcase drop-
 
 id|date|cause|fix
 B1|2026-07-14|`ForthThrow` unwinds JS stack ⊥ run pending `EXIT`s ∴ `rsp` dirty mid-colon → next `interpret()` misbehaves. §V.10 now ! abort reset dsp+rsp+running.
+B2|2026-07-14|`abort()` reset dsp/rsp/state/running but ⊥ the instance-held compile scratch (`leaveLists`/`caseExits`). THROW mid-def (e.g. undefined word ∈ unfinished case/do) left stale list ∴ next `endof`/`endcase`/`leave` popped it, skipped its no-open-construct guard, compiled bogus `drop` + patched dead cell. §V.10 now ! abort also clear `leaveLists`+`caseExits` (abort-scratch.test.ts).
