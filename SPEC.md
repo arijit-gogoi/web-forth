@@ -108,7 +108,7 @@ T26|x|Extended: CM6 Forth syntax mode — `StreamLanguage` tokenizer (keyword/co
 
 **Standard** = production word-set completeness (T27+): the ANS-ish words real code reaches for. Engine-first (the product); highlighter kept honest (§V28).
 
-T27|.|Standard: `recurse` (immediate) — compile smudged-LATEST xt into current thread; self-reference despite hide|V25,V15
+T27|x|Standard: `recurse` (immediate) — compile smudged-LATEST xt into current thread; self-reference despite hide|V25,V15
 T28|.|Standard: `leave` (immediate) — `(leave)` UNLOOP+branch runtime; JS-side leave-list stack per loop (nesting/multi-leave); resolved by loop/+loop|V26,V22
 T29|.|Standard: stack/bit/arith/mem words — `depth 2swap 2over -rot 2* 2/ lshift rshift */ */mod u< u>` + `move fill` (primitives + prelude where natural); wide `*/`, logical rshift, unsigned u< (§V29)|I.forth,V29
 T30|.|Standard: `case of endof endcase` immediates (of match-drop, endcase drop-then-resolve §V27) + sync tokenizer KEYWORDS + subset guard test|V27,V28

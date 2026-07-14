@@ -184,6 +184,20 @@ const installColonState = (f: Forth): void => {
   def('immediate', () => {
     f.dict.setImmediate(f.regs.latest, true)
   })
+  // recurse (immediate, compile-only) ( -- ) : compile a call to the definition in
+  // progress (§V.25). The word being compiled is the smudged LATEST, hidden from
+  // FIND until ; reveals it (§V.11), so its name cannot resolve mid-definition;
+  // recurse reaches it directly by its CFA (cfaOf(latest)) instead. Not a runtime
+  // word: it appends latest's xt into the current thread, exactly as the outer
+  // interpreter would compile any non-immediate word.
+  def(
+    'recurse',
+    () => {
+      f.compileOnly() // §V.15
+      f.comma(f.dict.cfaOf(f.regs.latest))
+    },
+    true,
+  )
 }
 
 const installTickLiteral = (f: Forth): void => {
