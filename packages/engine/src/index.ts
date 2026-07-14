@@ -3,6 +3,7 @@ export const ENGINE = '@web-forth/engine'
 
 export * from './dictionary'
 export * from './errors'
+export * from './forth'
 export * from './inner'
 export * from './memory'
 export * from './registers'
