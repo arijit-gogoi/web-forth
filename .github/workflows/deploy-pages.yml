@@ -1,0 +1,52 @@
+name: Deploy Pages
+
+# Build the client SPA and publish it to GitHub Pages on every push to main.
+# web-forth needs no server (Forth runs entirely client-side), so the static
+# Vite build in packages/client/dist is the whole deploy. The base path is set
+# to /web-forth/ in vite.config.ts so assets resolve under the project page.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push cancels an in-flight run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm must be set up BEFORE setup-node so `cache: pnpm` can find it.
+      # The version comes from the root package.json "packageManager" field.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @web-forth/client build
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: packages/client/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v5
