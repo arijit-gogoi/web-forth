@@ -1064,6 +1064,50 @@ const installPrimitives = (f: Forth): void => {
   def('abort', () => {
     throw new ForthThrow(THROW_ABORT)
   })
+  // catch ( xt -- code ) : run xt; return 0 if it completes, else the THROW code it
+  // raised (§V.17). A sanctioned §V.1 nested-run carve-out: it drives a nested
+  // execute()->run() and must save+restore the shared registers so the ENCLOSING
+  // trampoline survives. The load-bearing one is `running`: the nested HALT clears
+  // it on clean exit, and the outer loop re-checks `while(running)` the instant this
+  // primitive returns, so without the restore the caller's body dies after catch.
+  //
+  // The harness needs NO save/restore despite the code cell overwrite: its address
+  // is constant, cell-0 is already consumed (read into w, ip advanced) before the
+  // nested execute runs, and cell-1 is always HALT_XT (every execute writes the same
+  // value), so the enclosing word's pending return still finds HALT there.
+  def('catch', () => {
+    const xt = d.pop()
+    // Capture AFTER the pop so dsp is the depth catch must restore to on a throw
+    // (not one slot too deep, which would resurrect the popped xt).
+    const savedDsp = f.regs.dsp
+    const savedRsp = f.regs.rsp
+    const savedIp = f.regs.ip
+    const savedW = f.regs.w
+    const savedRunning = f.regs.running
+    try {
+      f.execute(xt) // nested run(); may ForthThrow
+    } catch (e) {
+      if (e instanceof ForthThrow) {
+        // Unwound past the nested run: restore depths (drops boom's orphaned return
+        // frame + any junk it pushed) and the clobbered registers, then push code.
+        f.regs.dsp = savedDsp
+        f.regs.rsp = savedRsp
+        f.regs.ip = savedIp
+        f.regs.w = savedW
+        f.regs.running = savedRunning
+        d.push(e.code)
+        return
+      }
+      throw e // ForthFault / genuine VM fault: propagate (§V.5)
+    }
+    // Clean exit: the nested HALT clobbered ip/w and cleared running; restore them so
+    // the enclosing NEXT resumes. dsp/rsp are NOT restored: the xt's stack results
+    // must stand, and rsp is already balanced (HALT follows every EXIT). Push 0.
+    f.regs.ip = savedIp
+    f.regs.w = savedW
+    f.regs.running = savedRunning
+    d.push(0)
+  })
 
   // Capture EXIT's xt for ; to compile. EXIT the word (distinct from the routine).
   f.exitXt = def('exit', EXIT)
