@@ -61,7 +61,7 @@ V16: `prelude.fth` `interpret`s @ boot with `throwCode==null`; else fatal `Forth
 
 id|status|task|cites
 T1|x|scaffold pnpm workspace: engine/client/cli, pnpm-workspace.yaml, root+pkg tsconfig, deps (effect, foldkit, @codemirror/*, vitest, @effect/vitest, @foldkit/vite-plugin — vers per foldkit peer/package.json)|C
-T2|.|engine: ArrayBuffer mem 256 KiB + Int32Array/Uint8Array views + registers + reserved exec-harness region|V6,V7
+T2|x|engine: ArrayBuffer mem 256 KiB + Int32Array/Uint8Array views + registers + reserved exec-harness region|V6,V7
 T3|.|engine: data+return stacks 1024 cells + push/pop + over/underflow throw|V9
 T4|.|engine: dictionary header build + FIND (case-insensitive) + LATEST + smudge/immediate flags|V11
 T5|.|engine: inner interpreter — code[] table, NEXT trampoline + step-budget watchdog, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8,V14
