@@ -94,7 +94,7 @@ T18|x|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + 
 T19|.|Extended: CM6 editor plain — add `@codemirror/{state,view,commands,language}` deps (⊥ declared/installed yet; T1 gap) + Mount.defineStream + editorHost registry + LoadExample Command, feeds same `UpdatedSource` (⊥ syntax mode yet)|R2,V3,V19
 T20|x|Extended: CREATE/DOES>/>BODY + DODOES|V11,V24
 T21|.|Extended: CATCH/THROW authentic — `catch ( xt -- code )`, nested→nearest, `throw 0` no-op|V17
-T22|.|Extended: control-flow completion — `+loop ?do i j while repeat`|V15,V22
+T22|x|Extended: control-flow completion — `+loop ?do i j while repeat`|V15,V22
 T23|.|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline ∈ thread via `(s")`, ⊥ transient buf, ⊥ `'c'`|V20,V23
 T24|.|Extended: EVALUATE + TIB-in-memory — nested text interpret|V18
 T25|.|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3

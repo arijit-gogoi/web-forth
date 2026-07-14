@@ -86,6 +86,8 @@ export class Forth {
   exitXt = 0
   doXt = 0
   loopXt = 0
+  plusLoopXt = 0
+  qDoXt = 0
   dodoesXt = 0
 
   // BASE is a real memory cell (authentic: `base @` / `base !` work), NOT a JS
@@ -482,6 +484,18 @@ const installPrimitives = (f: Forth): void => {
   def('r@', () => {
     d.push(r.peek())
   })
+  // i ( -- n ) : innermost DO loop index = return-stack top (§V.22). (do)/(?do)
+  // push [limit, index], so index is the top cell. i is a primitive (no DOCOL),
+  // so no return address sits above the index when it runs inside the loop body.
+  def('i', () => {
+    d.push(r.peek())
+  })
+  // j ( -- n ) : next-outer DO loop index (§V.22). Return stack top-down is
+  // [index_inner, limit_inner, index_outer, limit_outer], so index_outer is 3
+  // cells below the top (rsp-3).
+  def('j', () => {
+    d.push(r.cells[f.regs.rsp - 3] as number)
+  })
 
   // --- Memory ---
   def('@', () => {
@@ -608,8 +622,7 @@ const installPrimitives = (f: Forth): void => {
     v.rstack.push(index)
   })
   // (loop): runtime of LOOP. Increment index; if index < limit, branch back to the
-  // loop top (next inline cell); else drop the loop control and continue. i/j and
-  // +loop are Extended (§T.21); this ships plain do..loop.
+  // loop top (next inline cell); else drop the loop control and continue.
   f.loopXt = def('(loop)', (v) => {
     const index = v.rstack.pop() + 1
     const limit = v.rstack.pop()
@@ -619,6 +632,38 @@ const installPrimitives = (f: Forth): void => {
       v.regs.ip = v.mem.cellAt(v.regs.ip) // branch to loop top
     } else {
       v.regs.ip += CELL // skip the loop-top target, exit the loop
+    }
+  })
+  // (+loop): runtime of +LOOP ( n -- ). Add n to the index; loop again unless the
+  // step crossed the limit boundary (§V.22). Boundary crossing = the sign of
+  // (index-limit) flips between before and after; this handles negative steps that
+  // plain (loop)'s index<limit cannot. gforth's test: ((old-limit) XOR (new-limit)) < 0.
+  f.plusLoopXt = def('(+loop)', (v) => {
+    const step = v.dstack.pop()
+    const index = v.rstack.pop()
+    const limit = v.rstack.pop()
+    const next = (index + step) | 0
+    const crossed = ((index - limit) ^ (next - limit)) < 0
+    if (!crossed) {
+      v.rstack.push(limit)
+      v.rstack.push(next)
+      v.regs.ip = v.mem.cellAt(v.regs.ip) // branch to loop top
+    } else {
+      v.regs.ip += CELL // exit the loop
+    }
+  })
+  // (?do): runtime of ?DO ( limit index -- ). Like (do), but if limit==index the
+  // loop body is empty, so jump past it to the resolved skip target (§V.22). The
+  // skip target is the next inline cell (resolved by loop/+loop to just-after-loop).
+  f.qDoXt = def('(?do)', (v) => {
+    const index = v.dstack.pop()
+    const limit = v.dstack.pop()
+    if (limit === index) {
+      v.regs.ip = v.mem.cellAt(v.regs.ip) // skip the (empty) loop entirely
+    } else {
+      v.rstack.push(limit)
+      v.rstack.push(index)
+      v.regs.ip += CELL // step past the skip-target cell into the body
     }
   })
 
@@ -755,23 +800,84 @@ const installPrimitives = (f: Forth): void => {
     },
     true,
   )
-  // do: compile (do); push here (loop top) for loop to branch back to.
+  // while ( -- ) (compile-only) : inside begin ... while ... repeat. Compile
+  // ?branch + a forward exit target; push its slot ABOVE the begin address so
+  // repeat can resolve it. Stack: [beginAddr] -> [beginAddr, whileSlot].
+  def(
+    'while',
+    () => {
+      f.compileOnly()
+      f.comma(f.qbranchXt)
+      const beginAddr = d.pop()
+      const whileSlot = f.comma(0)
+      d.push(beginAddr)
+      d.push(whileSlot)
+    },
+    true,
+  )
+  // repeat ( -- ) (compile-only) : branch back to begin, then resolve while's
+  // forward exit to here (loop exit). Stack: [beginAddr, whileSlot] -> [].
+  def(
+    'repeat',
+    () => {
+      f.compileOnly()
+      const whileSlot = d.pop()
+      f.comma(f.branchXt)
+      f.comma(d.pop()) // branch target = beginAddr
+      f.mem.setCell(whileSlot, f.mem.here) // while exits here when flag is false
+    },
+    true,
+  )
+  // Loop compile-stack convention (§V.22): every DO-class opener leaves TWO cells
+  // for the closer: [skipSlot, loopTop]. skipSlot is the forward-branch target that
+  // ?do resolves to just-past-the-loop; plain do uses the 0 sentinel (nothing to
+  // resolve). loop/+loop pop loopTop, compile the runtime + loop-top target, then
+  // resolve skipSlot if non-zero. This keeps one closer path for do and ?do.
+  // do: compile (do); no skip slot (sentinel 0); push loop top.
   def(
     'do',
     () => {
       f.compileOnly()
       f.comma(f.doXt)
-      d.push(f.mem.here)
+      d.push(0) // skipSlot sentinel: plain do has no forward target
+      d.push(f.mem.here) // loop top
     },
     true,
   )
-  // loop: compile (loop) + the loop-top target.
+  // ?do: compile (?do) + a forward skip-target cell; push [skipSlot, loopTop].
+  def(
+    '?do',
+    () => {
+      f.compileOnly()
+      f.comma(f.qDoXt)
+      d.push(f.comma(0)) // skipSlot: (?do) reads it; loop resolves it past the loop
+      d.push(f.mem.here) // loop top
+    },
+    true,
+  )
+  // loop: compile (loop) + loop-top target; resolve the ?do skip slot to here.
   def(
     'loop',
     () => {
       f.compileOnly()
+      const loopTop = d.pop()
       f.comma(f.loopXt)
-      f.comma(d.pop())
+      f.comma(loopTop)
+      const skipSlot = d.pop()
+      if (skipSlot !== 0) f.mem.setCell(skipSlot, f.mem.here)
+    },
+    true,
+  )
+  // +loop: like loop but compiles (+loop) (signed step, boundary-crossing exit).
+  def(
+    '+loop',
+    () => {
+      f.compileOnly()
+      const loopTop = d.pop()
+      f.comma(f.plusLoopXt)
+      f.comma(loopTop)
+      const skipSlot = d.pop()
+      if (skipSlot !== 0) f.mem.setCell(skipSlot, f.mem.here)
     },
     true,
   )
