@@ -46,6 +46,10 @@ export const CompletedRun = m('CompletedRun', {
 // A run hit a genuine VM fault (ForthFault). Rare; the E-channel case of RunSource.
 export const FailedRun = m('FailedRun', { error: S.String })
 
+// The LoadExample Command finished pushing text into the live CM6 view (§T.19). A
+// fire-and-forget ack; update no-ops on it (the source Model field already changed).
+export const CompletedLoadExample = m('CompletedLoadExample')
+
 export const Message = S.Union([
   UpdatedSource,
   ClickedRun,
@@ -53,5 +57,6 @@ export const Message = S.Union([
   ClickedReset,
   CompletedRun,
   FailedRun,
+  CompletedLoadExample,
 ])
 export type Message = typeof Message.Type

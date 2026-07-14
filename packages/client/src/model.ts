@@ -3,10 +3,11 @@
 // AsyncData, and a copied dictionary snapshot. No mutable VM handle ever lives here; the
 // Forth/Vm is an Effect service, the data-stack snapshot is a plain copied array (§V.4).
 
-import { Schema as S } from 'effect'
+import { Option, Schema as S } from 'effect'
 import { AsyncData, Runtime } from 'foldkit'
 import { RunData, WordEntry } from './message'
 import type { Message } from './message'
+import { EDITOR_HOST_ID } from './view/mountEditor'
 
 // The console lifecycle. AsyncData.Schema builds the six-state union codec plus typed
 // constructors; the app uses four visual states via matchDataSplitEmpty (idle, loading,
@@ -14,22 +15,29 @@ import type { Message } from './message'
 // the ForthFault message string.
 export const ConsoleAsyncData = AsyncData.Schema(RunData, S.String)
 
+// maybeEditorHostId (§V.3/§V.19): the CM6 EditorView is a mutable handle kept in the
+// module registry (view/editorHost.ts), NEVER in the Model. The Model holds only this
+// Option<hostId> so Commands (LoadExample) can find the live view. One editor exists, so
+// the id is a constant, set from init; the actual view is constructed by the Mount.
 export const Model = S.Struct({
   source: S.String,
   console: ConsoleAsyncData.schema,
   dictionary: S.Array(WordEntry),
+  maybeEditorHostId: S.Option(S.String),
 })
 export type Model = typeof Model.Type
 
-const INITIAL_SOURCE = ': square dup * ;\n5 square .\n'
+export const INITIAL_SOURCE = ': square dup * ;\n5 square .\n'
 
-// Fresh state: seed the editor with a runnable example, an idle console, and an empty
-// dictionary (the real snapshot arrives after the first run).
+// Fresh state: seed the editor with a runnable example, an idle console, an empty
+// dictionary (the real snapshot arrives after the first run), and the editor host id
+// (the CM6 Mount always renders, so the id is known up front).
 export const init: Runtime.ApplicationInit<Model, Message> = () => [
   {
     source: INITIAL_SOURCE,
     console: ConsoleAsyncData.Idle(),
     dictionary: [],
+    maybeEditorHostId: Option.some(EDITOR_HOST_ID),
   },
   [],
 ]

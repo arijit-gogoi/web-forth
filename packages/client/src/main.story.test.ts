@@ -10,12 +10,14 @@ import { init } from './model'
 import {
   ClickedReset,
   ClickedRun,
+  CompletedLoadExample,
   CompletedRun,
   FailedRun,
   PressedRun,
   UpdatedSource,
 } from './message'
-import { ResetVm, RunSource } from './run'
+import { LoadExample, ResetVm, RunSource } from './run'
+import { INITIAL_SOURCE } from './model'
 
 const initialModel = () => init()[0]
 
@@ -132,9 +134,10 @@ test('FailedRun sets the console to Failure', () => {
   )
 })
 
-test('ClickedReset clears the console + dictionary and emits ResetVm', () => {
+test('ClickedReset clears the console + dictionary, re-seeds source, emits ResetVm + LoadExample', () => {
   const dirtyModel = {
     ...initialModel(),
+    source: 'garbage words',
     console: AsyncData.Success({
       data: { output: 'x', stack: [9], throwCode: null },
     }),
@@ -147,8 +150,15 @@ test('ClickedReset clears the console + dictionary and emits ResetVm', () => {
     Story.model((model) => {
       expect(model.console._tag).toBe('Idle')
       expect(model.dictionary).toEqual([])
+      // §T.19: reset re-seeds the editor source to the initial example.
+      expect(model.source).toBe(INITIAL_SOURCE)
     }),
-    Story.Command.expectExact(ResetVm({})),
+    // §T.19: reset resets the VM AND pushes the seed text into the live CM6 view.
+    Story.Command.expectExact(
+      ResetVm({}),
+      LoadExample({ hostId: initialModel().maybeEditorHostId, source: INITIAL_SOURCE }),
+    ),
     Story.Command.resolve(ResetVm, cannedCompleted()),
+    Story.Command.resolve(LoadExample, CompletedLoadExample()),
   )
 })

@@ -8,9 +8,9 @@ import { AsyncData, Command } from 'foldkit'
 import { html } from 'foldkit/html'
 import type { Document } from 'foldkit/html'
 import { evo } from 'foldkit/struct'
-import { init, Model } from './model'
+import { init, INITIAL_SOURCE, Model } from './model'
 import { Message } from './message'
-import { ResetVm, RunSource, runningModel } from './run'
+import { LoadExample, ResetVm, RunSource, runningModel } from './run'
 import type { Vm } from './vm'
 import { editorPaneView } from './view/editor'
 import { consolePaneView } from './view/console'
@@ -33,9 +33,17 @@ export const update = (
       ClickedRun: () => startRun(model),
       PressedRun: () => startRun(model),
 
+      // Reset clears the VM and console, re-seeds the editor to the initial example,
+      // and pushes that text into the live CM6 view (LoadExample). The source Model
+      // field and the CM6 doc stay in lockstep (§V.19: external writes go through a
+      // transaction on the registry-held view, never a re-mount).
       ClickedReset: () => [
-        evo(model, { console: () => AsyncData.Idle(), dictionary: () => [] }),
-        [ResetVm({})],
+        evo(model, {
+          source: () => INITIAL_SOURCE,
+          console: () => AsyncData.Idle(),
+          dictionary: () => [],
+        }),
+        [ResetVm({}), LoadExample({ hostId: model.maybeEditorHostId, source: INITIAL_SOURCE })],
       ],
 
       // §V.5: a completed run (including a Forth error) is Success; throwCode rides in
@@ -50,6 +58,10 @@ export const update = (
 
       // Genuine VM fault: the rare E-channel case.
       FailedRun: ({ error }) => [evo(model, { console: () => AsyncData.Failure({ error }) }), []],
+
+      // Fire-and-forget ack from LoadExample: the source Model field already changed,
+      // so there is nothing to fold (§T.19).
+      CompletedLoadExample: () => [model, []],
     }),
   )
 

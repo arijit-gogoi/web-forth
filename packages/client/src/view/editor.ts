@@ -1,7 +1,13 @@
-// @web-forth/client editor pane (SPEC.md §T.16, §I.app). Core = a textarea (CM6 is Extended,
-// §T.19). The controlled value is model.source; OnInput feeds UpdatedSource; Ctrl+Enter
-// runs via OnKeyDownPreventDefault (scoped to editor focus, returns Option so other keys
-// pass through). A Run button and a Reset button drive ClickedRun / ClickedReset.
+// @web-forth/client editor pane (SPEC.md §T.16 Core, §T.19 Extended, §V.19). The
+// shipped editor is CodeMirror 6, embedded via the MountEditor host div (a keyed
+// branch). CM6's updateListener feeds UpdatedSource and its Mod-Enter keymap feeds
+// PressedRun, the SAME facts the Core textarea produced, so the console/run wiring is
+// unchanged. The textarea remains as the Core fallback (coreTextareaEditor): swapping
+// the keyed branch back to it is the only change needed if CM6 is unavailable.
+//
+// Keyed branches (foldkit rule): the editor host and the textarea are alternatives at
+// one DOM position, each wrapped in a single keyed element with a stable identity key
+// (which editor, never the source text), so switching does not tear the wrong DOM.
 
 import { Option } from 'effect'
 import { AsyncData } from 'foldkit'
@@ -9,6 +15,44 @@ import { html } from 'foldkit/html'
 import type { Html } from 'foldkit/html'
 import type { Model } from '../model'
 import { ClickedReset, ClickedRun, Message, PressedRun, UpdatedSource } from '../message'
+import { EDITOR_HOST_ID, MountEditor } from './mountEditor'
+
+// CM6 host: a mount node the MountEditor constructs the EditorView into. initialDoc is
+// captured at mount (Mount args are not refreshed across renders); later external writes
+// go through the LoadExample Command, never a re-mount. Mod-Enter -> PressedRun lives
+// inside the CM6 keymap, so no OnKeyDownPreventDefault is needed here.
+const cm6Editor = (model: Model): Html => {
+  const h = html<Message>()
+  return h.keyed('div')(
+    'editor-cm6',
+    [
+      h.Class('editor-input editor-cm6'),
+      h.OnMount(MountEditor({ hostId: EDITOR_HOST_ID, initialDoc: model.source })),
+    ],
+    [],
+  )
+}
+
+// Core fallback (§T.16): the plain textarea. Kept as the alternative keyed branch; feeds
+// the same UpdatedSource + PressedRun facts. Not rendered while CM6 is the shipped editor.
+export const coreTextareaEditor = (model: Model): Html => {
+  const h = html<Message>()
+  return h.keyed('textarea')(
+    'editor-textarea',
+    [
+      h.Class('editor-input'),
+      h.Value(model.source),
+      h.Spellcheck(false),
+      h.OnInput((value) => UpdatedSource({ value })),
+      h.OnKeyDownPreventDefault((key, modifiers) =>
+        key === 'Enter' && (modifiers.ctrlKey || modifiers.metaKey)
+          ? Option.some(PressedRun())
+          : Option.none(),
+      ),
+    ],
+    [],
+  )
+}
 
 export const editorPaneView = (model: Model): Html => {
   const h = html<Message>()
@@ -18,20 +62,7 @@ export const editorPaneView = (model: Model): Html => {
     [h.Class('pane editor')],
     [
       h.header([h.Class('pane-header')], ['Editor']),
-      h.textarea(
-        [
-          h.Class('editor-input'),
-          h.Value(model.source),
-          h.Spellcheck(false),
-          h.OnInput((value) => UpdatedSource({ value })),
-          h.OnKeyDownPreventDefault((key, modifiers) =>
-            key === 'Enter' && (modifiers.ctrlKey || modifiers.metaKey)
-              ? Option.some(PressedRun())
-              : Option.none(),
-          ),
-        ],
-        [],
-      ),
+      cm6Editor(model),
       h.div(
         [h.Class('editor-actions')],
         [
