@@ -23,7 +23,16 @@ const alignUp = (addr: number): number => {
 }
 
 // --- Compile-support runtime words (compiled into threads by the immediates) ---
+// installRuntimes is the orchestrator; the sub-fns are split only to keep each under
+// the unit-size threshold and must stay called in this exact order (byte-identical
+// dictionary; the *Xt captures depend on it).
 export const installRuntimes = (f: Forth): void => {
+  installLiteralBranchRuntimes(f)
+  installLoopRuntimes(f)
+  installStringRuntimes(f)
+}
+
+const installLiteralBranchRuntimes = (f: Forth): void => {
   const def = makeDef(f)
 
   // lit: push the next inline cell and step ip past it.
@@ -44,6 +53,11 @@ export const installRuntimes = (f: Forth): void => {
       v.regs.ip += CELL
     }
   })
+}
+
+const installLoopRuntimes = (f: Forth): void => {
+  const def = makeDef(f)
+
   // (do): runtime of DO. ( limit index -- ) push both onto the return stack.
   f.doXt = def('(do)', (v) => {
     const index = v.dstack.pop()
@@ -96,6 +110,11 @@ export const installRuntimes = (f: Forth): void => {
       v.regs.ip += CELL // step past the skip-target cell into the body
     }
   })
+}
+
+const installStringRuntimes = (f: Forth): void => {
+  const def = makeDef(f)
+
   // (s"): runtime of a compiled s" (§V.20). On entry ip points at the inline count
   // byte, followed by that many string bytes, then padding to the next CELL. Push
   // ( c-addr u ) and advance ip past the cell-aligned byte payload (the compiler
@@ -119,8 +138,15 @@ export const installRuntimes = (f: Forth): void => {
 }
 
 // --- Defining + state words ---
+// installDefiningState is the orchestrator; the sub-fns are split only to keep each
+// under the unit-size threshold and must stay called in this exact order (byte-
+// identical dictionary).
 export const installDefiningState = (f: Forth): void => {
-  const d = f.dstack
+  installColonState(f)
+  installTickLiteral(f)
+}
+
+const installColonState = (f: Forth): void => {
   const def = makeDef(f)
 
   // : ( "name" -- ) create a colon header (CFA=DOCOL), smudge it, enter compile.
@@ -158,6 +184,12 @@ export const installDefiningState = (f: Forth): void => {
   def('immediate', () => {
     f.dict.setImmediate(f.regs.latest, true)
   })
+}
+
+const installTickLiteral = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   // literal (immediate, compile-only) ( n -- ) : compile n as an inline literal.
   def(
     'literal',
@@ -193,8 +225,17 @@ export const installDefiningState = (f: Forth): void => {
 }
 
 // --- Control-flow immediates (compile-only; §V.15). Backpatch targets are
-// absolute addresses, kept on the data stack during compilation. ---
+// absolute addresses, kept on the data stack during compilation. installControlFlow
+// is the orchestrator; the sub-fns are split only to keep each under the unit-size
+// threshold and must stay called in this exact order (byte-identical dictionary). ---
 export const installControlFlow = (f: Forth): void => {
+  installConditionals(f)
+  installBeginLoops(f)
+  installDoLoops(f)
+  installComments(f)
+}
+
+const installConditionals = (f: Forth): void => {
   const d = f.dstack
   const def = makeDef(f)
 
@@ -231,6 +272,12 @@ export const installControlFlow = (f: Forth): void => {
     },
     true,
   )
+}
+
+const installBeginLoops = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   // begin: push here (loop top) for until/again.
   def(
     'begin',
@@ -288,6 +335,12 @@ export const installControlFlow = (f: Forth): void => {
     },
     true,
   )
+}
+
+const installDoLoops = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   // Loop compile-stack convention (§V.22): every DO-class opener leaves TWO cells
   // for the closer: [skipSlot, loopTop]. skipSlot is the forward-branch target that
   // ?do resolves to just-past-the-loop; plain do uses the 0 sentinel (nothing to
@@ -341,6 +394,10 @@ export const installControlFlow = (f: Forth): void => {
     },
     true,
   )
+}
+
+const installComments = (f: Forth): void => {
+  const def = makeDef(f)
 
   // --- Comments (Core-required: the prelude needs them readable, §02) ---
   // ( ... ) immediate: parse to the closing paren, discard.

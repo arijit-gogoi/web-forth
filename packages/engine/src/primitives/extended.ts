@@ -14,6 +14,12 @@ import type { Forth } from '../forth'
 import { makeDef } from './shared'
 
 export const installExtended = (f: Forth): void => {
+  installEvaluate(f)
+  installStrings(f)
+  installSystem(f)
+}
+
+const installEvaluate = (f: Forth): void => {
   const d = f.dstack
   const def = makeDef(f)
 
@@ -25,8 +31,12 @@ export const installExtended = (f: Forth): void => {
     const addr = d.pop()
     f.evaluate(addr, len)
   })
+}
 
-  // --- Strings + char literals (Extended, §V.20, §V.23) ---
+// --- Strings + char literals (Extended, §V.20, §V.23) ---
+const installStrings = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
   // char ( "name" -- c ) : push the ASCII code of the first char of the next word.
   // Interpret-time word (NOT compile-only): `char a` at top level pushes 97.
   def('char', () => {
@@ -83,8 +93,12 @@ export const installExtended = (f: Forth): void => {
     },
     true,
   )
+}
 
-  // --- System ---
+// --- System ---
+const installSystem = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
   def('bye', () => {
     f.regs.running = false
   })

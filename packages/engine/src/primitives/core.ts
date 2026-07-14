@@ -22,12 +22,24 @@ const formatSigned = (n: number, base: number): string => (n | 0).toString(base)
 // Format a cell value as unsigned in the current BASE. Used by `u.`.
 const formatUnsigned = (n: number, base: number): string => (n >>> 0).toString(base)
 
+// The Core word-set, in definition order. installCore() is the orchestrator; the
+// sub-fns are split only to keep each under the unit-size threshold and must stay
+// called in this exact order (byte-identical dictionary keeps the golden suite green).
 export const installCore = (f: Forth): void => {
+  installStack(f)
+  installArithmetic(f)
+  installCompareLogic(f)
+  installReturnStack(f)
+  installMemory(f)
+  installIO(f)
+  installBase(f)
+}
+
+// --- Stack ---
+const installStack = (f: Forth): void => {
   const d = f.dstack
-  const r = f.rstack
   const def = makeDef(f)
 
-  // --- Stack ---
   def('dup', () => {
     const x = d.peek()
     d.push(x)
@@ -56,8 +68,13 @@ export const installCore = (f: Forth): void => {
     d.push(c)
     d.push(a)
   })
+}
 
-  // --- Arithmetic ---
+// --- Arithmetic ---
+const installArithmetic = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   def('+', () => {
     const b = d.pop()
     d.push(d.pop() + b)
@@ -99,8 +116,13 @@ export const installCore = (f: Forth): void => {
   def('1-', () => {
     d.push(d.pop() - 1)
   })
+}
 
-  // --- Compare / logic (Forth true = -1, false = 0) ---
+// --- Compare / logic (Forth true = -1, false = 0) ---
+const installCompareLogic = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   def('=', () => {
     const b = d.pop()
     d.push(bool(d.pop() === b))
@@ -141,8 +163,14 @@ export const installCore = (f: Forth): void => {
   def('invert', () => {
     d.push(~d.pop())
   })
+}
 
-  // --- Return stack ---
+// --- Return stack ---
+const installReturnStack = (f: Forth): void => {
+  const d = f.dstack
+  const r = f.rstack
+  const def = makeDef(f)
+
   def('>r', () => {
     r.push(d.pop())
   })
@@ -164,8 +192,13 @@ export const installCore = (f: Forth): void => {
   def('j', () => {
     d.push(r.cells[f.regs.rsp - 3] as number)
   })
+}
 
-  // --- Memory ---
+// --- Memory ---
+const installMemory = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   def('@', () => {
     d.push(f.mem.cellAt(d.pop()))
   })
@@ -211,8 +244,13 @@ export const installCore = (f: Forth): void => {
     const rem = a & (CELL - 1)
     d.push(rem === 0 ? a : a + (CELL - rem))
   })
+}
 
-  // --- I/O (output only, Core) ---
+// --- I/O (output only, Core) ---
+const installIO = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   def('.', () => {
     f.emit(`${formatSigned(d.pop(), f.base())} `)
   })
@@ -246,8 +284,12 @@ export const installCore = (f: Forth): void => {
     }
     f.emit(s)
   })
+}
 
-  // --- Numeric base (a real memory cell; base @ / base ! work) ---
+// --- Numeric base (a real memory cell; base @ / base ! work) ---
+const installBase = (f: Forth): void => {
+  const def = makeDef(f)
+
   // Create BASE as a CREATE-class variable, cache its PFA, initialize to 10. This
   // runs before loadPrelude() (whose literals need BASE=10 already set).
   {

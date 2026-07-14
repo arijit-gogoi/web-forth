@@ -11,11 +11,19 @@ import { toBody } from '../dictionary'
 import type { Forth } from '../forth'
 import { makeDef } from './shared'
 
+// The data-defining word-set, in definition order (§V.11). installDataDefining()
+// is the orchestrator; the sub-fns are split only to keep each under the unit-size
+// threshold and must stay called in this exact order (byte-identical dictionary).
 export const installDataDefining = (f: Forth): void => {
+  installVariableConstant(f)
+  installCreateDoes(f)
+}
+
+// --- Defining words for data (CREATE-class; DOES> is Extended, §V.11) ---
+const installVariableConstant = (f: Forth): void => {
   const d = f.dstack
   const def = makeDef(f)
 
-  // --- Defining words for data (CREATE-class; DOES> is Extended, §V.11) ---
   // variable ( "name" -- ) : CFA=[DOVAR][doesCodeAddr=0][body cell]. Pushes PFA.
   def('variable', () => {
     const name = f.parseName()
@@ -34,8 +42,13 @@ export const installDataDefining = (f: Forth): void => {
     f.mem.setCell(cfa, f.doconstIndex)
     f.comma(value)
   })
+}
 
-  // --- CREATE / DOES> / >BODY (Extended, §V.11, §V.24) ---
+// --- CREATE / DOES> / >BODY (Extended, §V.11, §V.24) ---
+const installCreateDoes = (f: Forth): void => {
+  const d = f.dstack
+  const def = makeDef(f)
+
   // create ( "name" -- ) : CFA=[DOVAR][doesCodeAddr=0], no body cells (allot on
   // demand). Same 2-slot layout as variable so DOES> and >BODY slot in. Pushing
   // the PFA is DOVAR's job; DOES> later rewrites the CFA routine to DODOES.
