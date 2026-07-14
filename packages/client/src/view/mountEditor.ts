@@ -19,6 +19,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { PressedRun, UpdatedSource } from '../message'
 import { setEditor, removeEditor } from './editorHost'
+import { forthLanguageSupport } from './forthLanguage'
 
 // The single editor pane's host id. One editor in the app, so a constant suffices.
 export const EDITOR_HOST_ID = 'web-forth-editor'
@@ -40,6 +41,7 @@ export const MountEditor = Mount.defineStream(
               doc: initialDoc,
               extensions: [
                 history(),
+                ...forthLanguageSupport, // §T.26 Forth syntax highlighting
                 keymap.of([
                   {
                     key: 'Mod-Enter',

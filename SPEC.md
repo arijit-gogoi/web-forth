@@ -11,7 +11,7 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 - app = browser-only static SPA. Forth runs 100% client-side. ⊥ server, ⊥ shared pkg, ⊥ RPC. cli = node dev/aux tool over engine, ≠ shipped app.
 - Effect v4 == foldkit peer dep (⊥ bump independent). `@effect/platform-browser` likewise. v4 source ∈ effect-smol repo. exact ver ∈ `package.json`.
 - Foldkit. Elm Architecture: 1 immutable Model, 1 update, side effects ∈ Commands. build Vite + `@foldkit/vite-plugin`.
-- editor CodeMirror 6 (`@codemirror/{state,view,commands,language}`) via foldkit `Mount.defineStream`. Core = textarea; CM6 = Extended.
+- editor CodeMirror 6 (`@codemirror/{state,view,commands,language}` + `@codemirror/theme-one-dark` for the syntax-mode palette) via foldkit `Mount.defineStream`. Core = textarea; CM6 = Extended.
 - test Vitest. engine plain vitest; client `@effect/vitest` (foldkit peer ver) + happy-dom.
 - threading indirect (ITC), routine-index dispatch. byte-addressed 32-bit cells over `ArrayBuffer`. fixed 256 KiB mem, 1024-cell data+return stacks. configurable, ⊥ surfaced in UI.
 - errors authentic `THROW`/`CATCH` integer codes; `ABORT` + continue. Forth errors = data; Effect E-channel = VM faults only.
@@ -98,7 +98,7 @@ T22|x|Extended: control-flow completion — `+loop ?do i j while repeat`|V15,V22
 T23|x|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline ∈ thread via `(s")`, ⊥ transient buf, ⊥ `'c'`|V20,V23
 T24|x|Extended: EVALUATE + TIB-in-memory — nested text interpret|V18
 T25|x|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3
-T26|.|Extended: CM6 Forth syntax mode (`@codemirror/language`)|R2
+T26|x|Extended: CM6 Forth syntax mode — `StreamLanguage` tokenizer (keyword/comment/number/string/def) + `@codemirror/theme-one-dark` palette|R2
 
 ## §B BUGS
 
