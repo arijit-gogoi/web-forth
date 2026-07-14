@@ -12,29 +12,36 @@ import {
   ClickedRun,
   CompletedLoadExample,
   CompletedRun,
+  CompletedSave,
   FailedRun,
   PressedRun,
+  SaveTick,
   UpdatedSource,
 } from './message'
-import { LoadExample, ResetVm, RunSource } from './run'
+import { DebounceSave, LoadExample, ResetVm, RunSource, SaveSource } from './run'
 import { INITIAL_SOURCE } from './model'
 
-const initialModel = () => init()[0]
+const initialModel = () => init({ initialSource: INITIAL_SOURCE })[0]
 
 // A canned CompletedRun to resolve a pending run/reset Command in a pure story (Story
 // does not execute Command effects; it folds the result Message you hand it).
 const cannedCompleted = () =>
   CompletedRun({ result: { output: '', stack: [], throwCode: null }, dictionary: [] })
 
-test('UpdatedSource replaces the editor source', () => {
+test('UpdatedSource replaces the editor source and schedules a debounced save', () => {
   Story.story(
     update,
     Story.with(initialModel()),
     Story.message(UpdatedSource({ value: '1 2 +' })),
     Story.model((model) => {
       expect(model.source).toBe('1 2 +')
+      expect(model.saveGeneration).toBe(1)
     }),
-    Story.Command.expectNone(),
+    // §T.25: an edit schedules the debounced autosave (generation 1).
+    Story.Command.expectExact(DebounceSave({ generation: 1 })),
+    Story.Command.resolve(DebounceSave, SaveTick({ generation: 1 })),
+    // the tick still matches -> SaveSource fires; resolve it to settle the story
+    Story.Command.resolve(SaveSource, CompletedSave()),
   )
 })
 
@@ -152,13 +159,19 @@ test('ClickedReset clears the console + dictionary, re-seeds source, emits Reset
       expect(model.dictionary).toEqual([])
       // §T.19: reset re-seeds the editor source to the initial example.
       expect(model.source).toBe(INITIAL_SOURCE)
+      // §T.25: reset bumps the save generation and persists the re-seeded text.
+      expect(model.saveGeneration).toBe(1)
     }),
-    // §T.19: reset resets the VM AND pushes the seed text into the live CM6 view.
+    // §T.19/§T.25: reset resets the VM, pushes the seed text into the live CM6 view, and
+    // schedules the autosave of the re-seeded buffer.
     Story.Command.expectExact(
       ResetVm({}),
       LoadExample({ hostId: initialModel().maybeEditorHostId, source: INITIAL_SOURCE }),
+      DebounceSave({ generation: 1 }),
     ),
     Story.Command.resolve(ResetVm, cannedCompleted()),
     Story.Command.resolve(LoadExample, CompletedLoadExample()),
+    Story.Command.resolve(DebounceSave, SaveTick({ generation: 1 })),
+    Story.Command.resolve(SaveSource, CompletedSave()),
   )
 })

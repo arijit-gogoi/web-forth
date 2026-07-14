@@ -97,7 +97,7 @@ T21|x|Extended: CATCH/THROW authentic — `catch ( xt -- code )`, nested→neare
 T22|x|Extended: control-flow completion — `+loop ?do i j while repeat`|V15,V22
 T23|x|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline ∈ thread via `(s")`, ⊥ transient buf, ⊥ `'c'`|V20,V23
 T24|x|Extended: EVALUATE + TIB-in-memory — nested text interpret|V18
-T25|.|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3
+T25|x|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3
 T26|.|Extended: CM6 Forth syntax mode (`@codemirror/language`)|R2
 
 ## §B BUGS

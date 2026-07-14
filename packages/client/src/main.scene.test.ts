@@ -8,28 +8,35 @@
 import { Scene } from 'foldkit'
 import { describe, test } from 'vitest'
 import { update, view } from './main'
-import { init } from './model'
-import { CompletedRun, UpdatedSource } from './message'
-import { RunSource } from './run'
+import { init, INITIAL_SOURCE } from './model'
+import { CompletedRun, CompletedSave, SaveTick, UpdatedSource } from './message'
+import { DebounceSave, RunSource, SaveSource } from './run'
 import { MountEditor } from './view/mountEditor'
 
-const initialModel = () => init()[0]
+const initialModel = () => init({ initialSource: INITIAL_SOURCE })[0]
 
 // A canned CompletedRun for resolving a pending run so the scene settles.
 const cannedCompletedMessage = () =>
   CompletedRun({ result: { output: '15 ', stack: [], throwCode: null }, dictionary: [] })
 
-// Resolve the always-present CM6 editor mount with a benign UpdatedSource (the factory is
-// not run; this just clears the pending slot Scene requires to be resolved).
-const resolveEditorMount = (model = initialModel()) =>
-  Scene.Mount.resolve(MountEditor, UpdatedSource({ value: model.source }))
+// Resolve the always-present CM6 editor mount. Resolving injects the mount's result
+// Message (UpdatedSource with the given text) through update, which from a fresh
+// (generation 0) model bumps to generation 1 and schedules the autosave, so the
+// DebounceSave -> SaveTick -> SaveSource cascade is resolved too. Pass the model's own
+// source so the injected UpdatedSource is a no-op re-assignment, not a clobber. The
+// factory is never run (no real CM6 in happy-dom).
+const settleEditorMount = (sourceValue: string) => [
+  Scene.Mount.resolve(MountEditor, UpdatedSource({ value: sourceValue })),
+  Scene.Command.resolve(DebounceSave, SaveTick({ generation: 1 })),
+  Scene.Command.resolve(SaveSource, CompletedSave()),
+]
 
 describe('three-pane layout', () => {
   test('renders editor, console, and inspector headers', () => {
     Scene.scene(
       { update, view },
       Scene.with(initialModel()),
-      resolveEditorMount(),
+      ...settleEditorMount(INITIAL_SOURCE),
       Scene.expect(Scene.text('Editor')).toExist(),
       Scene.expect(Scene.text('Console')).toExist(),
       Scene.expect(Scene.text('Data stack')).toExist(),
@@ -41,7 +48,7 @@ describe('three-pane layout', () => {
     Scene.scene(
       { update, view },
       Scene.with(initialModel()),
-      resolveEditorMount(),
+      ...settleEditorMount(INITIAL_SOURCE),
       Scene.expect(Scene.role('button', { name: 'Run  (Ctrl+Enter)' })).toExist(),
       Scene.expect(Scene.role('button', { name: 'Reset' })).toExist(),
     )
@@ -58,7 +65,7 @@ describe('CM6 editor mount (§T.19)', () => {
       Scene.Mount.expectHas(
         MountEditor({ hostId: 'web-forth-editor', initialDoc: initialModel().source }),
       ),
-      resolveEditorMount(),
+      ...settleEditorMount(INITIAL_SOURCE),
     )
   })
 })
@@ -68,7 +75,7 @@ describe('run wiring', () => {
     Scene.scene(
       { update, view },
       Scene.with({ ...initialModel(), source: '7 8 +' }),
-      resolveEditorMount({ ...initialModel(), source: '7 8 +' }),
+      ...settleEditorMount('7 8 +'),
       Scene.click(Scene.role('button', { name: 'Run  (Ctrl+Enter)' })),
       Scene.Command.expectExact(RunSource({ source: '7 8 +' })),
       Scene.Command.resolve(RunSource, cannedCompletedMessage()),

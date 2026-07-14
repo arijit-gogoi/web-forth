@@ -7,14 +7,24 @@
 // the happy path is CompletedRun (carrying the RunData + dictionary snapshot); the
 // Effect.catch branch maps a genuine fault to FailedRun.
 
-import { Effect, Option, Schema as S } from 'effect'
+import { Duration, Effect, Option, Schema as S } from 'effect'
+import { KeyValueStore } from 'effect/unstable/persistence'
 import { AsyncData, Command } from 'foldkit'
 import { evo } from 'foldkit/struct'
+import { BrowserKeyValueStore } from '@effect/platform-browser'
 import { Vm } from './vm'
-import { CompletedLoadExample, CompletedRun, FailedRun, WordEntry } from './message'
+import {
+  CompletedLoadExample,
+  CompletedRun,
+  CompletedSave,
+  FailedRun,
+  SaveTick,
+  WordEntry,
+} from './message'
 import type { Model } from './model'
 import type { WordInfo } from '@web-forth/engine'
 import { getEditor } from './view/editorHost'
+import { SAVE_DEBOUNCE_MS, STORAGE_KEY } from './persistence'
 
 // Copy the engine's dictionary snapshot into the Schema-typed WordEntry shape the Model
 // holds (§V.4: snapshots cross, never the live structures).
@@ -84,6 +94,49 @@ export const LoadExample = Command.define(
           }),
       }),
   }),
+)
+
+/**
+ * The debounce timer for autosave (§T.25). Sleeps the debounce window, then emits a
+ * SaveTick carrying the generation captured at schedule time. Prior timers are NOT
+ * interrupted: they all fire, and the generation guard in update discards stale ones
+ * (trailing-edge debounce). Story resolves this Command with a canned SaveTick, so the
+ * debounce is tested as the guard without any real delay.
+ */
+export const DebounceSave = Command.define('DebounceSave', { generation: S.Number }, SaveTick)(
+  ({ generation }) =>
+    Effect.sleep(Duration.millis(SAVE_DEBOUNCE_MS)).pipe(Effect.as(SaveTick({ generation }))),
+)
+
+/**
+ * Write `source` through an abstract KeyValueStore (testable with layerMemory). Stores the
+ * raw string (the buffer is plain text, no JSON round-trip). Fail-silence is applied by
+ * the Command wrapper below.
+ */
+export const writeSavedSource = (
+  source: string,
+): Effect.Effect<
+  typeof CompletedSave.Type,
+  KeyValueStore.KeyValueStoreError,
+  KeyValueStore.KeyValueStore
+> =>
+  Effect.gen(function* () {
+    const store = yield* KeyValueStore.KeyValueStore
+    yield* store.set(STORAGE_KEY, source)
+    return CompletedSave()
+  })
+
+/**
+ * Write the editor buffer to localStorage (§T.25, §V.21). Fail-silent: a quota error or
+ * disabled storage is caught and folded to CompletedSave, so persistence never crashes
+ * the run loop, then the browser store is provided.
+ */
+export const SaveSource = Command.define('SaveSource', { source: S.String }, CompletedSave)(
+  ({ source }) =>
+    writeSavedSource(source).pipe(
+      Effect.catch(() => Effect.succeed(CompletedSave())),
+      Effect.provide(BrowserKeyValueStore.layerLocalStorage),
+    ),
 )
 
 // Move the console into its pending state for a fresh run (§V.13 makes update ignore new

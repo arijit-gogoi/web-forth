@@ -3,12 +3,16 @@
 // so every Command (RunSource, ResetVm) gets it in the R channel.
 
 import { Runtime } from 'foldkit'
-import { init, Model, update, view } from './main'
+import { Flags, flags, init, Model, update, view } from './main'
 import { VmLayer } from './vm'
 import './styles.css'
 
+// flags reads the saved editor buffer from localStorage before init (§T.25), so the
+// restored text is in the Model when the CM6 editor captures its initialDoc.
 const application = Runtime.makeApplication({
   Model,
+  Flags,
+  flags,
   init,
   update,
   view,

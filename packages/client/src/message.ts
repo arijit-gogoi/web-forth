@@ -50,6 +50,15 @@ export const FailedRun = m('FailedRun', { error: S.String })
 // fire-and-forget ack; update no-ops on it (the source Model field already changed).
 export const CompletedLoadExample = m('CompletedLoadExample')
 
+// --- Autosave (§T.25, §V.21) ---
+// The debounce window elapsed for this generation (emitted by the DebounceSave timer
+// Command). update saves only if it is still the latest generation (else a newer edit
+// superseded it in the window).
+export const SaveTick = m('SaveTick', { generation: S.Number })
+// The SaveSource Command finished writing to localStorage (or failed silently, §V.21). A
+// fire-and-forget ack; update no-ops.
+export const CompletedSave = m('CompletedSave')
+
 export const Message = S.Union([
   UpdatedSource,
   ClickedRun,
@@ -58,5 +67,7 @@ export const Message = S.Union([
   CompletedRun,
   FailedRun,
   CompletedLoadExample,
+  SaveTick,
+  CompletedSave,
 ])
 export type Message = typeof Message.Type
