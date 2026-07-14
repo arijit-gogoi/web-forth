@@ -171,6 +171,72 @@ export class Forth {
     }
   }
 
+  // The bare token loop over the current source/>IN: parse a word, execute or compile
+  // it (or a number), until the source is exhausted. NO try/catch here (§V.18): a
+  // ForthThrow must propagate through so EVALUATE's errors reach the nearest CATCH or
+  // the top-level handler, rather than being swallowed. interpret() wraps this with
+  // the source/output setup + the abort-on-throw handler; evaluate() reuses it over a
+  // temporary source with saved/restored parse state.
+  private runTokens(): void {
+    for (;;) {
+      const name = this.parseName()
+      if (name === null) break
+      const found = this.dict.find(name)
+      if (found) {
+        // §V.11 compile semantics: in compile state, non-immediate words are appended
+        // to the current definition; immediate words run now.
+        if (this.regs.state === STATE_COMPILE && !found.immediate) {
+          this.comma(found.xt)
+        } else {
+          this.execute(found.xt)
+        }
+      } else {
+        const n = this.parseNumber(name)
+        if (n === null) {
+          throw new ForthThrow(THROW_UNDEFINED_WORD, name)
+        }
+        if (this.regs.state === STATE_COMPILE) {
+          // Compile a literal: lit reads the next inline cell at run time.
+          this.comma(this.litXt)
+          this.comma(n)
+        } else {
+          this.dstack.push(n)
+        }
+      }
+    }
+  }
+
+  // §V.18: run the counted string ( c-addr u ) as Forth source via a nested
+  // text-interpret (a §V.1 carve-out). Reads the bytes into a JS string, then reuses
+  // runTokens() over it with the enclosing parse state saved and restored so the
+  // caller's tokenizing resumes cleanly. Does NOT call the public interpret() (which
+  // wipes output + resets source/>IN). Output accumulates (not wiped, not saved), and
+  // dsp/rsp/state are deliberately NOT saved: the evaluated text's stack results and
+  // any definitions it makes must stand (authentic EVALUATE). The harness needs no
+  // save (constant addr; cell-0 dead, cell-1 always HALT_XT), same as catch (§V.17).
+  // A ForthThrow propagates to the caller (nearest CATCH / top level); try/finally
+  // restores parse state on both paths without swallowing.
+  evaluate(addr: number, len: number): void {
+    let text = ''
+    for (let i = 0; i < len; i++) text += String.fromCharCode(this.mem.byteAt(addr + i))
+    const savedIp = this.regs.ip
+    const savedW = this.regs.w
+    const savedRunning = this.regs.running
+    const savedSource = this.regs.source
+    const savedToIn = this.regs.toIn
+    try {
+      this.regs.source = text
+      this.regs.toIn = 0
+      this.runTokens()
+    } finally {
+      this.regs.ip = savedIp
+      this.regs.w = savedW
+      this.regs.running = savedRunning
+      this.regs.source = savedSource
+      this.regs.toIn = savedToIn
+    }
+  }
+
   // --- Outer interpreter (text interpreter / QUIT), §T.7 ---
 
   // Skip whitespace, collect to the next whitespace, advance >IN. Null at end.
@@ -237,32 +303,7 @@ export class Forth {
     this.regs.toIn = 0
     this.output = ''
     try {
-      for (;;) {
-        const name = this.parseName()
-        if (name === null) break
-        const found = this.dict.find(name)
-        if (found) {
-          // §V.11 compile semantics: in compile state, non-immediate words are
-          // appended to the current definition; immediate words run now.
-          if (this.regs.state === STATE_COMPILE && !found.immediate) {
-            this.comma(found.xt)
-          } else {
-            this.execute(found.xt)
-          }
-        } else {
-          const n = this.parseNumber(name)
-          if (n === null) {
-            throw new ForthThrow(THROW_UNDEFINED_WORD, name)
-          }
-          if (this.regs.state === STATE_COMPILE) {
-            // Compile a literal: lit reads the next inline cell at run time.
-            this.comma(this.litXt)
-            this.comma(n)
-          } else {
-            this.dstack.push(n)
-          }
-        }
-      }
+      this.runTokens()
       return { output: this.output, throwCode: null, stack: this.stackSnapshot() }
     } catch (e) {
       if (e instanceof ForthThrow) {
@@ -991,6 +1032,15 @@ const installPrimitives = (f: Forth): void => {
       throw new ForthThrow(THROW_INVALID_ADDR, '>body on a non-CREATE word')
     }
     d.push(toBody(cfa))
+  })
+
+  // evaluate ( c-addr u -- ) : interpret the counted string as Forth source via a
+  // nested text-interpret (§V.18). Stack-transparent: results and definitions the
+  // text produces persist; a throw propagates to the nearest catch / top level.
+  def('evaluate', () => {
+    const len = d.pop()
+    const addr = d.pop()
+    f.evaluate(addr, len)
   })
 
   // --- Strings + char literals (Extended, §V.20, §V.23) ---
