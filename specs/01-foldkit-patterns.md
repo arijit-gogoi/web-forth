@@ -8,7 +8,7 @@ Code-grounded extraction of Foldkit patterns from vendored source, feeding the w
 
 Every API claim below cites a real `path:line` under `repos/foldkit/`. Paths are relative to that root. Conventions followed: Schema-typed Model, full names (`Message`, not `Msg`), `Array<T>` (never `T[]`), no bracket indexing, `Match` over `switch`, no em dashes.
 
-> **Build status.** The v1 client (§T.14-18) is built on the patterns in sections A/B/D/F: `makeApplication`+`run`, the `RunSource`/`ResetVm` Commands over the `Vm` service, the textarea editor (section D), and the `AsyncData` console. The **CodeMirror 6 editor (section C) and the `Mount.defineStream` bridge are v2 (§T.19) and NOT yet built.** That section is grounded design intent; its CM6-side calls are reasoned from the CM6 API, not vendored-cited. The Subscription patterns (section E) are likewise reference, not yet used.
+> **Build status.** The Core client (§T.14-18) is built on the patterns in sections A/B/D/F: `makeApplication`+`run`, the `RunSource`/`ResetVm` Commands over the `Vm` service, the textarea editor (section D), and the `AsyncData` console. The **CodeMirror 6 editor (section C) and the `Mount.defineStream` bridge are Extended (§T.19) and NOT yet built.** That section is grounded design intent; its CM6-side calls are reasoned from the CM6 API, not vendored-cited. The Subscription patterns (section E) are likewise reference, not yet used.
 
 ## The one throughline that governs web-forth
 
@@ -207,7 +207,7 @@ Note on citation scope: the Foldkit-side primitives above and in the Recommendat
 
 ---
 
-## D. Plain text-input path (v1 fallback, from `examples/form/`)
+## D. Plain text-input path (Core fallback, from `examples/form/`)
 
 Before CodeMirror, a `<textarea>` is the whole editor. Value change -> Message -> Model. Two attributes do it:
 
@@ -222,7 +222,7 @@ UpdatedMessageText: ({ value }) => [evo(model, { messageText: () => Valid({ valu
 h.textarea([...attributes.textarea, h.Class(inputClassName(field))], [])
 ```
 
-Minimal web-forth v1 editor:
+Minimal web-forth Core editor:
 
 ```ts
 export const UpdatedSource = m('UpdatedSource', { value: S.String })
@@ -299,13 +299,13 @@ AsyncData.matchDataSplitEmpty(model.weather, {
 
 ```ts
 h.div([h.Class('h-screen w-screen flex')], [
-  editorPaneView(model),      // left: textarea (v1) or CodeMirror host div (v2)
+  editorPaneView(model),      // left: textarea (Core) or CodeMirror host div (Extended)
   consolePaneView(model),     // middle: output log
   inspectorPaneView(model),   // right: data stack + dictionary
 ])
 ```
 
-Within a pane, key each branch that swaps on a union: the console (Idle | Running | Ok | Error) and the editor (textarea-v1 vs CodeMirror) each wrap their branches in `keyed`, one key per branch, keys carrying identity (which editor, which console state) and never the source text or output.
+Within a pane, key each branch that swaps on a union: the console (Idle | Running | Ok | Error) and the editor (textarea-Core vs CodeMirror) each wrap their branches in `keyed`, one key per branch, keys carrying identity (which editor, which console state) and never the source text or output.
 
 ---
 
@@ -316,7 +316,7 @@ Within a pane, key each branch that swaps on a union: the console (Idle | Runnin
 | App bootstrap / mount to DOM | `Runtime.makeApplication(config)` + `Runtime.run` (view returns `Document`); `makeElement` if embedded as a pane (view returns `Html`) | `runtime.ts:2707`, `:3165`, `:2931` |
 | Forth `Vm` (mutable core) | Effect service via `resources: Layer.Layer<Vm>`; Commands get it in the `R` channel | `runtime.ts:717`, `command/index.ts:13` |
 | Editor pane (CodeMirror 6) | `Mount.defineStream` (construction-time `updateListener` + `keymap` -> Message stream) + module registry for the `EditorView`; push content via `view.dispatch({ changes })` Command | `mount/index.ts:380`, `map/src/mapHost.ts:9`, `map/src/main.ts:113` |
-| Editor pane (v1 fallback) | `h.textarea` with `h.Value` + `h.OnInput` | `html/index.ts:548`, `:505`; `form/src/main.ts:412` |
+| Editor pane (Core fallback) | `h.textarea` with `h.Value` + `h.OnInput` | `html/index.ts:548`, `:505`; `form/src/main.ts:412` |
 | Run source | `Command.define(...)` reading the `Vm` service; `Succeeded/FailedRun` fold via `Effect.catch` | `command/index.ts:111`; `weather/src/main.ts:225`, `:217` |
 | Console output pane | Model field as `AsyncData` (via `AsyncData.Schema`); render with `matchDataSplitEmpty` (idle/loading/failure/data) + `keyed` per branch | `weather/src/main.ts:23`, `:294`, `asyncData/asyncData.ts:318` |
 | Data-stack view | `h.ul`/`h.pre` over `ReadonlyArray<number>` snapshot in Model; key items by stable index-identity or render as one `pre` | `map/src/main.ts:556` |
@@ -327,7 +327,7 @@ Within a pane, key each branch that swaps on a union: the console (Idle | Runnin
 
 ## Recommendation
 
-**Editor pane: CodeMirror 6 via `Mount.defineStream`, with a textarea-only v1 fallback.**
+**Editor pane: CodeMirror 6 via `Mount.defineStream`, with a textarea-only Core fallback.**
 
 Editor is decided: CodeMirror 6 (`@codemirror/state`, `@codemirror/view`, `@codemirror/commands`, `@codemirror/language`). CM6 is itself TEA-shaped (immutable `EditorState`, changes applied as transactions, `EditorView` is a projection of state), so it slots cleanly into Foldkit: the `EditorView` is the only mutable, non-Schema handle, it stays in the module registry, and both document edits and a Mod-Enter keymap emit Messages through the same stream.
 
@@ -388,7 +388,7 @@ export const LoadExample = Command.define('LoadExample', { hostId: S.Option(S.St
 
 This is the same registry-access shape the `map` app's `FlyTo` uses to drive the live instance (`examples/map/src/main.ts:113`).
 
-**v1 fallback**: the `h.textarea` in section D. Ship this first; swap the editor pane's branch (keyed) to the Mount host div when adding CM6. Nothing else in the architecture changes, because the textarea feeds `UpdatedSource` and CM6 feeds the same `ChangedSource` fact, and Ctrl+Enter is `h.OnKeyDownPreventDefault` in v1, the CM6 keymap in v2.
+**Core fallback**: the `h.textarea` in section D. Ship this first; swap the editor pane's branch (keyed) to the Mount host div when adding CM6. Nothing else in the architecture changes, because the textarea feeds `UpdatedSource` and CM6 feeds the same `ChangedSource` fact, and Ctrl+Enter is `h.OnKeyDownPreventDefault` in Core, the CM6 keymap in Extended.
 
 **RunSource Command shape.** A Command that reads the `Vm` service, runs the current source, and returns a snapshot Message. The `Vm` is provided app-wide via `resources`, so it is in the `R` channel; success and failure fold via `Effect.catch` (`weather/src/main.ts:217`):
 

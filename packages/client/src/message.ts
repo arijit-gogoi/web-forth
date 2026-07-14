@@ -28,7 +28,7 @@ export const WordEntry = S.Struct({
 })
 export type WordEntry = typeof WordEntry.Type
 
-// Editor text changed (textarea OnInput in v1; the CM6 stream in v2 feeds the same fact).
+// Editor text changed (textarea OnInput in Core; the CM6 stream in Extended feeds the same fact).
 export const UpdatedSource = m('UpdatedSource', { value: S.String })
 // Run requested via the button.
 export const ClickedRun = m('ClickedRun')

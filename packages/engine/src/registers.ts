@@ -15,7 +15,7 @@ export interface Registers {
   latest: number // byte addr of the latest dictionary link field — §T.4
   toIn: number // >IN cursor into the current source
   running: boolean // trampoline flag — §T.5
-  source: string // current input buffer (v1 JS string)
+  source: string // current input buffer (Core JS string)
 }
 
 // NOTE: BASE is deliberately NOT a register. It is an authentic Forth memory cell

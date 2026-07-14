@@ -10,6 +10,6 @@ Flow:
 
 So: `specs/` = scratch/draft; root `SPEC.md` = the source of truth once `/ck:spec` runs. Keep drafts here readable and link decisions to the eventual §-sections.
 
-- `00-web-forth-overview.md` — vision, locked decisions, architecture, v1 word-set, open questions.
+- `00-web-forth-overview.md` — vision, locked decisions, architecture, Core word-set, open questions.
 - `01-foldkit-patterns.md` — Foldkit + CodeMirror 6 UI patterns (app skeleton, Command, Mount bridge, view DSL), code-grounded with `repos/foldkit` citations.
 - `02-engine-design.md` — authentic ITC Forth engine: memory map, word layout, inner/outer interpreter, primitives, prelude, THROW/CATCH error model, Vm surface.

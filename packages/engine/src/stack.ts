@@ -2,7 +2,7 @@
 //
 // The two stacks are SEPARATE Int32Array buffers (not in main memory), 1024 cells
 // each by default (§C, advisor-settled). This is a conscious fidelity tradeoff:
-// DEPTH works, addressable SP@/SP! do not (v2).
+// DEPTH works, addressable SP@/SP! do not (Extended).
 //
 // The stack pointer is NOT owned here — it lives on the shared Registers object
 // (regs.dsp / regs.rsp), which §I lists as the authoritative stack pointers. Stack

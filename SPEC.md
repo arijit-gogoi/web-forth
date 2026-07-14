@@ -11,7 +11,7 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 - app = browser-only static SPA. Forth runs 100% client-side. ⊥ server, ⊥ shared pkg, ⊥ RPC. cli = node dev/aux tool over engine, ≠ shipped app.
 - Effect v4 == foldkit peer dep (⊥ bump independent). `@effect/platform-browser` likewise. v4 source ∈ effect-smol repo. exact ver ∈ `package.json`.
 - Foldkit. Elm Architecture: 1 immutable Model, 1 update, side effects ∈ Commands. build Vite + `@foldkit/vite-plugin`.
-- editor CodeMirror 6 (`@codemirror/{state,view,commands,language}`) via foldkit `Mount.defineStream`. v1 = textarea; CM6 = v2.
+- editor CodeMirror 6 (`@codemirror/{state,view,commands,language}`) via foldkit `Mount.defineStream`. Core = textarea; CM6 = Extended.
 - test Vitest. engine plain vitest; client `@effect/vitest` (foldkit peer ver) + happy-dom.
 - threading indirect (ITC), routine-index dispatch. byte-addressed 32-bit cells over `ArrayBuffer`. fixed 256 KiB mem, 1024-cell data+return stacks. configurable, ⊥ surfaced in UI.
 - errors authentic `THROW`/`CATCH` integer codes; `ABORT` + continue. Forth errors = data; Effect E-channel = VM faults only.
@@ -26,7 +26,7 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 - cli: `web-forth` node REPL. interactive prompt; pipe `.fth` file → run + print stack/output. dep engine only.
 - lib: `@web-forth/engine` exports `class Forth`. `interpret(source): RunResult`, `stackSnapshot(): ReadonlyArray<number>`, `dictSnapshot(): ReadonlyArray<WordInfo>`, `reset(): void`. `RunResult = { output: string, throwCode: number|null, stack: ReadonlyArray<number> }`. ⊥ throw for Forth errors; throws `ForthFault` for VM faults only.
 - svc: `Vm` Effect service (∈ client) wraps `Forth`. `interpret(src) → Effect<RunResult, ForthFault>`, `stackSnapshot`, `dictSnapshot`, `reset`. provided app-wide `Layer<Vm>` (foldkit `resources`).
-- forth v1 words: arith `+ - * / mod = <> < > 0= 0< 0> and or xor invert`; stack `dup drop swap over rot >r r>`; mem `@ ! c@ c! +! , here allot cells cell+ align aligned`; io `. .s u. emit cr space type`; compile `: ; [ ] immediate literal ' [']`; control (immediate) `if else then begin until again do loop`; base `base decimal hex` + `$hex`; comments `( )` `\`; sys `bye abort throw`. prelude adds `?dup nip tuck 2dup 2drop abs min max negate 1+ 1- 0<> true false variable constant space spaces`.
+- forth Core words: arith `+ - * / mod = <> < > 0= 0< 0> and or xor invert`; stack `dup drop swap over rot >r r>`; mem `@ ! c@ c! +! , here allot cells cell+ align aligned`; io `. .s u. emit cr space type`; compile `: ; [ ] immediate literal ' [']`; control (immediate) `if else then begin until again do loop`; base `base decimal hex` + `$hex`; comments `( )` `\`; sys `bye abort throw`. prelude adds `?dup nip tuck 2dup 2drop abs min max negate 1+ 1- 0<> true false variable constant space spaces`.
 
 ## §R RESEARCH
 
@@ -47,17 +47,19 @@ V4: data-stack snapshot → Model = copied `ReadonlyArray<number>`. ⊥ live `In
 V5: Forth errors ride success channel as `RunResult.throwCode` + output text. Effect E-channel (`ForthFault`) = genuine VM faults only. `RunSource` ∀ ordinary error → `CompletedRun`.
 V6: `@ !` require cell-aligned addr (`a & 3 = 0`). debug build asserts.
 V7: alloc (`,` `allot` header) reaching exec-harness region → `THROW -8`.
-V8: `execute()` non-reentrant (single scratch). outer interpreter runs tokens in order. nested `EVALUATE` ⊥ till v2.
+V8: `execute()` non-reentrant (single scratch). outer interpreter runs tokens in order. nested `EVALUATE` ⊥ till Extended.
 V9: over/underflow → `THROW -3/-4` (data), `-5/-6` (return); div-by-0 → `-10`; undefined word → `-13`; compile-only word in interpret → `-14`; step-budget exceeded → `-28`.
 V10: `ABORT` clears data + return stacks (dsp=rsp=0) + `state=interpret` + `running=false`. interpreter prints gforth-style msg + continues.
 V11: colon CFA = [DOCOL]; CREATE-class CFA = [DOVAR][doesCodeAddr] (2-slot, DOES>-ready); `>BODY` = CFA+2·CELL for CREATE words.
 V12: client follows foldkit idioms (Schema Model, `Match`, `Array<T>`, ⊥ bracket index, ⊥ em dash). lint-enforced.
 V13: ⊥ concurrent `Vm.interpret` (shared mutable core). `update` ignores `ClickedRun`/`PressedRun` while console `AsyncData==Loading`; Vm serializes interpret.
-V14: inner loop enforces step budget. exceed → `THROW -28` (keeps main thread responsive). v2 → Web Worker for true interrupt.
+V14: inner loop enforces step budget. exceed → `THROW -28` (keeps main thread responsive). Extended → Web Worker for true interrupt.
 V15: compile-only words (control-flow immediates: `;` if/then/…) self-check `state`; run @ `state==interpret` → `THROW -14`. no header flag (lenflags byte full: 0x80|0x40|0x3F); guard ∈ each word.
 V16: `prelude.fth` `interpret`s @ boot with `throwCode==null`; else fatal `ForthFault` (⊥ silent half-init).
 
 ## §T TASKS
+
+Phases (one continuous build, not shipped releases): **Core** = the working base (engine + REPL + textarea UI, T1-T18, done). **Extended** = deeper authenticity + polish (DOES>, CATCH, CM6, strings, save/load; T19+).
 
 id|status|task|cites
 T1|x|scaffold pnpm workspace: engine/client/cli, pnpm-workspace.yaml, root+pkg tsconfig, deps (effect, foldkit, @codemirror/*, vitest, @effect/vitest, @foldkit/vite-plugin — vers per foldkit peer/package.json)|C
@@ -75,12 +77,12 @@ T12|x|cli: node REPL over Forth (interactive + pipe .fth)|I.cli
 T13|x|client: Vm Effect service (serialize interpret) + Layer<Vm> over Forth; verify effect v4 Effect.Service/Layer + @effect/vitest API vs repos/effect-smol; channel tests|I.svc,V2,V5,V13
 T14|x|client: foldkit app skeleton (Model/Message/init/update/view/entry) + Runtime.makeApplication+run|R4
 T15|x|client: RunSource Command (reads Vm, ignored while Loading) → CompletedRun{output,stack,throwCode} / FailedRun|R3,V5,V13
-T16|x|client: v1 textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
+T16|x|client: Core textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
 T17|x|client: console pane (AsyncData Idle/Running/Ok/Err, keyed) + data-stack pane + dictionary pane|V3,V4
 T18|x|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + snapshot render|V3
-T19|.|v2: CM6 editor via Mount.defineStream + editorHost registry + LoadExample Command|R2,V3
-T20|.|v2: CREATE/DOES>/>BODY + DODOES|V11
-T21|.|v2: CATCH + +LOOP ?DO i j WHILE REPEAT + char lit + strings ." s" + EVALUATE/TIB + localStorage save/load + CM6 Forth syntax mode|-
+T19|.|Extended: CM6 editor via Mount.defineStream + editorHost registry + LoadExample Command|R2,V3
+T20|.|Extended: CREATE/DOES>/>BODY + DODOES|V11
+T21|.|Extended: CATCH + +LOOP ?DO i j WHILE REPEAT + char lit + strings ." s" + EVALUATE/TIB + localStorage save/load + CM6 Forth syntax mode|-
 
 ## §B BUGS
 

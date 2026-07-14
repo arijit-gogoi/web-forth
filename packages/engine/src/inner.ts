@@ -17,7 +17,7 @@
 // It is non-reentrant (single harness); the outer interpreter runs tokens in order.
 //
 // §V.14: run() enforces a per-execution step budget; exceeding it throws -28 (keeps
-// the main thread responsive; a true interrupt via Web Worker is v2).
+// the main thread responsive; a true interrupt via Web Worker is Extended).
 
 import { ForthThrow, THROW_STEP_BUDGET } from './errors'
 import { CELL, Memory } from './memory'

@@ -36,7 +36,7 @@ data stack : Int32Array(1024), dsp    return stack : Int32Array(1024), rsp
 Decisions (advisor-settled):
 
 - **Alignment.** `@ !` index via `cells[a >> 2]`, which would silently truncate an unaligned `a`, so the engine guards it: every cell access (`cellAt`/`setCell`) asserts CELL alignment and throws `-23` on a misaligned address (§V.6), not just in a debug build. Provide `ALIGN` (round `HERE` up to CELL) and `ALIGNED ( a -- a' )`.
-- **Separate stacks** are a conscious fidelity tradeoff. `DEPTH` works; addressable `SP@ SP!` do not (v2, if ever). Noted, not silent.
+- **Separate stacks** are a conscious fidelity tradeoff. `DEPTH` works; addressable `SP@ SP!` do not (Extended, if ever). Noted, not silent.
 - **`HERE` bounds.** Any allocation (`,`, `ALLOT`, header build) that would reach the reserved exec harness `THROW`s `-8` (dictionary overflow).
 
 ## Registers **[§I]**
@@ -52,7 +52,7 @@ The register set (`Registers`) is exactly these; nothing else lives on it.
 | `latest` | byte address of the most recent word's link field |
 | `toIn` | `>IN` cursor into the current source string |
 | `running` | trampoline flag |
-| `source` | the current input buffer (a JS string in v1) |
+| `source` | the current input buffer (a JS string in Core) |
 
 Two things that a naive register list would include are deliberately NOT registers:
 
@@ -73,12 +73,12 @@ PFA   param field : body (see per-class below)
 - **xt** = address of the CFA cell. `FIND` returns `(xt, immediate)`. `'` (tick) pushes an xt. `,` / `COMPILE,` append xts.
 - **Colon** word: `CFA=[DOCOL]`, body = xt list ending in `EXIT` xt. Body at `CFA + CELL`.
 - **CONSTANT**: `CFA=[DOCONST]`, value at `CFA + CELL`.
-- **CREATE-class** (`CREATE`, `VARIABLE`): **two-slot code field** `[CFA=DOVAR][doesCodeAddr]`, body (PFA) at `CFA + 2*CELL`. `doesCodeAddr` is unused (0) until `DOES>` sets it. `>BODY ( xt -- pfa )` returns `CFA + 2*CELL` and assumes this CREATE layout. Fixing the extra slot now means `DODOES` and `>BODY` slot in without reshuffling when DOES> lands (v2).
+- **CREATE-class** (`CREATE`, `VARIABLE`): **two-slot code field** `[CFA=DOVAR][doesCodeAddr]`, body (PFA) at `CFA + 2*CELL`. `doesCodeAddr` is unused (0) until `DOES>` sets it. `>BODY ( xt -- pfa )` returns `CFA + 2*CELL` and assumes this CREATE layout. Fixing the extra slot now means `DODOES` and `>BODY` slot in without reshuffling when DOES> lands (Extended).
 - **FIND is case-insensitive** (traditional). Name compare folds case.
 
 ## Inner interpreter: the ITC dispatch **[§I][§V]**
 
-No machine addresses. A word's **code field cell holds a small integer**, an index into a JS array `code: Array<(vm) => void>` of behavior routines. `code[]` holds the v1 inner-interpreter routines (`HALT`, `DOCOL`, `EXIT`, `DOVAR`, `DOCONST`; `DODOES` arrives with DOES> in v2) and every primitive. `HALT` is registered first, so its routine index is `0` and the reserved boot cell at address 0 self-consistently dispatches to it. A primitive word's CFA cell is that primitive's own index.
+No machine addresses. A word's **code field cell holds a small integer**, an index into a JS array `code: Array<(vm) => void>` of behavior routines. `code[]` holds the Core inner-interpreter routines (`HALT`, `DOCOL`, `EXIT`, `DOVAR`, `DOCONST`; `DODOES` arrives with DOES> in Extended) and every primitive. `HALT` is registered first, so its routine index is `0` and the reserved boot cell at address 0 self-consistently dispatches to it. A primitive word's CFA cell is that primitive's own index.
 
 ```ts
 // one NEXT step (the loop body)
@@ -104,7 +104,7 @@ DOCOL(vm)  { rpush(ip); ip = w + CELL }              // enter colon body
 EXIT(vm)   { ip = rpop() }                            // return
 DOVAR(vm)  { dpush(w + 2*CELL) }                      // push PFA (CREATE 2-slot layout)
 DOCONST(vm){ dpush(cell(w + CELL)) }                  // push stored value
-DODOES(vm) { dpush(w + 2*CELL); rpush(ip); ip = cell(w + CELL) }  // push PFA, thread into DOES> code (v2)
+DODOES(vm) { dpush(w + 2*CELL); rpush(ip); ip = cell(w + CELL) }  // push PFA, thread into DOES> code (Extended)
 HALT(vm)   { vm.running = false }                     // stop trampoline, return to JS
 ```
 
@@ -125,13 +125,13 @@ execute(xt) {
 
 - The inner interpreter is a **single flat `while` loop**. Behavior routines never call `run()`. This is the only thing that keeps deep colon nesting off the JS call stack.
 - The core is **Effect-free**. Only the `Vm` wrapper is effectful.
-- The exec harness is **non-re-entrant**: the outer interpreter runs tokens strictly sequentially (it does). This blocks nested `EVALUATE` until v2 (which needs a saved/restored harness or a real TIB).
+- The exec harness is **non-re-entrant**: the outer interpreter runs tokens strictly sequentially (it does). This blocks nested `EVALUATE` until Extended (which needs a saved/restored harness or a real TIB).
 
 ## Primitives (TypeScript core) **[§I]**
 
-Only these must be JS. Everything else is bootstrapped in the prelude. The v1 set below is what the engine actually installs (machine-checked by the `golden.test.ts` v1 word-set coverage test); the v2 column lists what the same groups gain later.
+Only these must be JS. Everything else is bootstrapped in the prelude. The Core set below is what the engine actually installs (machine-checked by the `golden.test.ts` Core word-set coverage test); the Extended column lists what the same groups gain later.
 
-| Group | v1 (built) | v2 (deferred) |
+| Group | Core (built) | Extended (deferred) |
 | --- | --- | --- |
 | Inner routines | `DOCOL EXIT DOVAR DOCONST HALT` | `DODOES`, `EXECUTE` (also a word) |
 | Stack | `dup drop swap over rot` (`?dup nip tuck 2dup 2drop` live in the prelude) | |
@@ -143,25 +143,25 @@ Only these must be JS. Everything else is bootstrapped in the prelude. The v1 se
 | Parsing | `( \ '` (tick) `[']` | `parse parse-name` as words, TIB |
 | Dictionary / defining | `: ; [ ] immediate variable constant` | `create find >body >cfa`, `state`/`latest` as words |
 | Numeric | `base decimal hex` | |
-| I/O (output only, v1) | `. .s u. emit cr space type` | `?` |
+| I/O (output only, Core) | `. .s u. emit cr space type` | `?` |
 | System | `bye abort throw` | `catch` |
 | Control flow (immediate) | `if else then begin until again do loop` | `+loop ?do while repeat` |
 
-Parsing (`( \`) and the outer interpreter's `parseName`/`parse` are engine methods, not dictionary words, in v1. `here` is the DP on the `Memory` object; `base`/`state`/`latest` back onto memory or registers rather than being addressable words yet.
+Parsing (`( \`) and the outer interpreter's `parseName`/`parse` are engine methods, not dictionary words, in Core. `here` is the DP on the `Memory` object; `base`/`state`/`latest` back onto memory or registers rather than being addressable words yet.
 
 `lit` reads the next cell as an inline literal (`dpush(cell(ip)); ip += CELL`). `branch` sets `ip = cell(ip)`; `?branch` pops a flag and branches if zero. These are what immediate control-flow words compile.
 
 ## Parsing **[§I]**
 
-v1 tokenizes the JS `source` string directly against the `toIn` (`>IN`) cursor. Primitives read the cursor, so parsing words work:
+Core tokenizes the JS `source` string directly against the `toIn` (`>IN`) cursor. Primitives read the cursor, so parsing words work:
 
 - `parseName() -> string | null` — skip whitespace, collect to next whitespace, advance `toIn`.
 - `parse(delim) -> string` — collect to `delim`, advance past it.
 - `(` (immediate) — `parse(')')`, discard. `\` (immediate) — skip to end of line.
 
-Comments (`( )`, `\`) are **v1-required** even though not in the user word-set, because the prelude needs them to be readable.
+Comments (`( )`, `\`) are **Core-required** even though not in the user word-set, because the prelude needs them to be readable.
 
-TIB-in-memory (`SOURCE WORD` operating on a memory buffer) is a v2 authenticity upgrade; it also unlocks `EVALUATE`.
+TIB-in-memory (`SOURCE WORD` operating on a memory buffer) is a Extended authenticity upgrade; it also unlocks `EVALUATE`.
 
 ## Outer interpreter (text interpreter / QUIT) **[§I]**
 
@@ -198,11 +198,11 @@ interpret(source): RunResult {
 
 ## Error model **[§I]** (supersedes the `Effect.catch → FailedRun` sketch in `01`)
 
-Authentic `THROW`/`CATCH`. `THROW ( code -- )` unwinds to the nearest `CATCH`; at top level the interpreter's own handler catches it. Implemented with a JS exception `class ForthThrow { code; detail }` so the throw unwinds the trampoline and any nested primitive in one step. `CATCH ( xt -- code )` (v2) installs a JS try/catch plus saved stack depths.
+Authentic `THROW`/`CATCH`. `THROW ( code -- )` unwinds to the nearest `CATCH`; at top level the interpreter's own handler catches it. Implemented with a JS exception `class ForthThrow { code; detail }` so the throw unwinds the trampoline and any nested primitive in one step. `CATCH ( xt -- code )` (Extended) installs a JS try/catch plus saved stack depths.
 
 Standard codes:
 
-These are the codes the v1 engine raises (constants in `errors.ts`; message text in `messages.ts`).
+These are the codes the Core engine raises (constants in `errors.ts`; message text in `messages.ts`).
 
 | Code | Meaning | Trigger |
 | --- | --- | --- |
@@ -229,24 +229,24 @@ These are the codes the v1 engine raises (constants in `errors.ts`; message text
 
 ## Number bases **[§I]**
 
-Parse and print honor `base`. v1: signed integer in `base`, plus a `$` prefix for hex (`$1F`). `.` and `u.` format in `base`. `DECIMAL` / `HEX` set `base`. Prefixes `#` (decimal) and `%` (binary), and char literals `'c'`, are v2.
+Parse and print honor `base`. Core: signed integer in `base`, plus a `$` prefix for hex (`$1F`). `.` and `u.` format in `base`. `DECIMAL` / `HEX` set `base`. Prefixes `#` (decimal) and `%` (binary), and char literals `'c'`, are Extended.
 
 ## Prelude (bootstrapped in Forth) **[§I]**
 
 A `prelude.fth` file (source of truth) is codegen'd to `prelude.generated.ts` (`export const PRELUDE`) at build, and that string is `interpret`ed at boot after primitives are installed. The codegen (over Vite `?raw`) is deliberate: the engine also runs in the node cli and vitest, where `?raw` is unavailable, so the prelude loads identically everywhere (§C, §V.16). A throw during prelude load is fatal (a `ForthFault`), never a silent half-init.
 
-The v1 prelude defines exactly (`prelude.fth`):
+The Core prelude defines exactly (`prelude.fth`):
 
 - Stack/util: `?dup nip tuck 2dup 2drop`, `0<> true false`.
 - Arithmetic/util: `abs min max`.
 - Printing: `spaces`.
 
-`variable constant space` are TypeScript primitives in v1, not prelude words. `2swap` and `?` are v2.
+`variable constant space` are TypeScript primitives in Core, not prelude words. `2swap` and `?` are Extended.
 
-**Control flow decision.** The v1 immediate compiling words are `IF ELSE THEN`, `BEGIN UNTIL AGAIN`, `DO LOOP`; they emit `branch`/`?branch`/`(do)`/`(loop)` and backpatch. `WHILE REPEAT` and `+LOOP` (and `?DO i j`) are v2. `DO` is **post-test**: `(loop)` tests at the bottom, so a `DO ... LOOP` always runs its body at least once (a zero-count `0 do ... loop` runs one trip). The skip-empty `?DO` is v2, which is why post-test `DO` is not redundant with it. Two ways to author them:
+**Control flow decision.** The Core immediate compiling words are `IF ELSE THEN`, `BEGIN UNTIL AGAIN`, `DO LOOP`; they emit `branch`/`?branch`/`(do)`/`(loop)` and backpatch. `WHILE REPEAT` and `+LOOP` (and `?DO i j`) are Extended. `DO` is **post-test**: `(loop)` tests at the bottom, so a `DO ... LOOP` always runs its body at least once (a zero-count `0 do ... loop` runs one trip). The skip-empty `?DO` is Extended, which is why post-test `DO` is not redundant with it. Two ways to author them:
 
-- **v1 (decided): implement as TypeScript immediate primitives.** Fewer moving parts, no bootstrap risk.
-- **v2: reimplement in the Forth prelude** using `here`, `,`, `!`, and mark/resolve words, to demonstrate that Forth compiles its own control flow. Migrate once v1 is green.
+- **Core (decided): implement as TypeScript immediate primitives.** Fewer moving parts, no bootstrap risk.
+- **Extended: reimplement in the Forth prelude** using `here`, `,`, `!`, and mark/resolve words, to demonstrate that Forth compiles its own control flow. Migrate once Core is green.
 
 Backpatch shapes (either way):
 
@@ -261,9 +261,9 @@ Backpatch shapes (either way):
 | `DO` | `(do)` | push HERE (loop top) |
 | `LOOP` | `(loop)` with target = loop top | pop; uses return stack for index/limit |
 
-## CREATE / DOES> **[§I]** (v2, layout fixed now)
+## CREATE / DOES> **[§I]** (Extended, layout fixed now)
 
-`CREATE` builds a header with `CFA=[DOVAR][doesCodeAddr=0]`, body at `CFA + 2*CELL`. `DOES>` (immediate) ends the defining word and compiles `(does>)`; at the defining word's runtime, `(does>)` sets the just-created word's CFA routine to `DODOES` and its `doesCodeAddr` slot to the address right after `(does>)` (the DOES> code, a colon-style thread). `DODOES` pushes the PFA then threads into that code. `>BODY` already accounts for the 2-slot layout. Nothing about v1 needs reshuffling.
+`CREATE` builds a header with `CFA=[DOVAR][doesCodeAddr=0]`, body at `CFA + 2*CELL`. `DOES>` (immediate) ends the defining word and compiles `(does>)`; at the defining word's runtime, `(does>)` sets the just-created word's CFA routine to `DODOES` and its `doesCodeAddr` slot to the address right after `(does>)` (the DOES> code, a colon-style thread). `DODOES` pushes the PFA then threads into that code. `>BODY` already accounts for the 2-slot layout. Nothing about Core needs reshuffling.
 
 ## Vm service surface **[§I]** (seam to Foldkit; ties to `01`)
 
@@ -303,8 +303,8 @@ interface VmShape {
 
 ## Scope **[§T]**
 
-- **v1**: memory + stacks + inner/outer interpreter + `: ;` + primitives + control flow (TS immediates) + `>r r>` + memory words + `THROW`/`ABORT` + `BASE`(+`$`) + comments + a small Forth prelude + `.s .` output. Editor = textarea (`01` §D). No CM6 yet.
-- **v2**: CM6 editor (`01` §C), `CREATE`/`DOES>`/`>BODY`, `CATCH`, `+LOOP ?DO WHILE REPEAT i j`, char literals + string words (`." s"`), `EVALUATE` + TIB-in-memory, control flow reimplemented in the prelude, `KEY`/`ACCEPT`, save/load (localStorage), Forth syntax mode (`@codemirror/language`).
+- **Core**: memory + stacks + inner/outer interpreter + `: ;` + primitives + control flow (TS immediates) + `>r r>` + memory words + `THROW`/`ABORT` + `BASE`(+`$`) + comments + a small Forth prelude + `.s .` output. Editor = textarea (`01` §D). No CM6 yet.
+- **Extended**: CM6 editor (`01` §C), `CREATE`/`DOES>`/`>BODY`, `CATCH`, `+LOOP ?DO WHILE REPEAT i j`, char literals + string words (`." s"`), `EVALUATE` + TIB-in-memory, control flow reimplemented in the prelude, `KEY`/`ACCEPT`, save/load (localStorage), Forth syntax mode (`@codemirror/language`).
 
 ## Resolved defaults (grill, 2026-07-13) **[§C]**
 
@@ -314,6 +314,6 @@ interface VmShape {
 4. `.` is **signed**, `u.` is **unsigned** (cell is `Int32`). Standard.
 5. Prelude is a **`prelude.fth` file codegen'd to `prelude.generated.ts`** (`export const PRELUDE`) at build, not a TS template string and not Vite `?raw` (the engine also runs in node/vitest where `?raw` is unavailable).
 6. Error messages are **informative, gforth-style** (`Undefined word: foo`, `Stack underflow`).
-7. v1 control flow (`IF/ELSE/THEN`, `BEGIN/UNTIL`, `DO/LOOP`) = **TypeScript immediate words**; reimplement in the prelude in v2.
+7. Core control flow (`IF/ELSE/THEN`, `BEGIN/UNTIL`, `DO/LOOP`) = **TypeScript immediate words**; reimplement in the prelude in Extended.
 
-No engine sub-questions remain open. Items genuinely deferred to v2 are under Scope.
+No engine sub-questions remain open. Items genuinely deferred to Extended are under Scope.

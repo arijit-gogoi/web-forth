@@ -1,4 +1,4 @@
-// @web-forth/client editor pane (SPEC.md §T.16, §I.app). v1 = a textarea (CM6 is v2,
+// @web-forth/client editor pane (SPEC.md §T.16, §I.app). Core = a textarea (CM6 is Extended,
 // §T.19). The controlled value is model.source; OnInput feeds UpdatedSource; Ctrl+Enter
 // runs via OnKeyDownPreventDefault (scoped to editor focus, returns Option so other keys
 // pass through). A Run button and a Reset button drive ClickedRun / ClickedReset.

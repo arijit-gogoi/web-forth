@@ -145,7 +145,7 @@ describe('control flow: do loop', () => {
     expect(r.output).toBe('*****') // 42 == '*'
   })
 
-  test('post-test DO runs the body once when limit==index (?DO is the v2 zero-trip variant)', () => {
+  test('post-test DO runs the body once when limit==index (?DO is the Extended zero-trip variant)', () => {
     const f = new Forth()
     const r = f.interpret(': stars 0 do 42 emit loop ; 0 stars')
     expect(r.output).toBe('*') // one trip: DO is post-test; ?DO (T21) would skip

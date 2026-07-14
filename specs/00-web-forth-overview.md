@@ -20,7 +20,7 @@ Decided in discussion (2026-07-13):
 | Language | **TypeScript** (strict) | Match Foldkit. Version pinned in `package.json`. |
 | Effect system | **Effect v4** | Version **dictated by Foldkit's `peerDependencies`** (both `effect` and `@effect/platform-browser`). Do **not** bump independently of Foldkit; read the exact version from `package.json`. Source lives in the `effect-smol` repo. |
 | UI framework | **Foldkit** | Elm Architecture: Model / Message / Command / Subscription / Mount. Apps use `@foldkit/vite-plugin`; `create-foldkit-app` scaffolds. Version pinned in `package.json`. |
-| Editor | **CodeMirror 6** via Foldkit **`Mount.defineStream`** (v2) | Packages `@codemirror/{state,view,commands,language}`, vendored to `repos/codemirror/`. CM6 is TEA-shaped (immutable `EditorState`, transactions, `EditorView` projection). The imperative `EditorView` lives in a module registry (out of the Model); edits and a Mod-Enter keymap emit Messages. v1 ships a textarea; CM6 is v2 (§T.19). Full patterns: `specs/01-foldkit-patterns.md`. |
+| Editor | **CodeMirror 6** via Foldkit **`Mount.defineStream`** (Extended) | Packages `@codemirror/{state,view,commands,language}`, vendored to `repos/codemirror/`. CM6 is TEA-shaped (immutable `EditorState`, transactions, `EditorView` projection). The imperative `EditorView` lives in a module registry (out of the Model); edits and a Mod-Enter keymap emit Messages. Core ships a textarea; CM6 is Extended (§T.19). Full patterns: `specs/01-foldkit-patterns.md`. |
 | Repo shape | **Monorepo of packages** | pnpm workspaces (`packages/*`). |
 | Runtime / PM | **Node + pnpm** | Mirror Foldkit's `engines`; versions pinned in `package.json`. |
 | Test runner | **Vitest** via **`@effect/vitest`** | Effect-aware. DOM tests via **`happy-dom`**. Foldkit exposes a `foldkit/test/vitest` entry. Versions pinned in `package.json`. |
@@ -46,7 +46,7 @@ Core tension: authentic Forth state is a **big mutable `Int32Array`** (memory + 
 - **Outer interpreter:** parse whitespace-delimited token → dictionary lookup → `EXECUTE` or compile; else parse as number; else `word ?` error. `STATE` = interpret vs compile.
 - **Immediate words:** `IF ELSE THEN`, `BEGIN UNTIL`, `DO LOOP`, `: ; [ ]` run at compile time, emit branch cells, back-patch offsets.
 - **Dictionary:** linked headers (name + flags + code field + params), newest-first for shadowing. `IMMEDIATE` flag.
-- **`CREATE`/`DOES>`:** crown jewel — `CREATE` builds a header whose default behavior pushes PFA; `DOES>` rewrites the last word's code field to run the `DOES>` thread after pushing PFA. ITC makes this clean. **v2** (structure now, implement after v1).
+- **`CREATE`/`DOES>`:** crown jewel — `CREATE` builds a header whose default behavior pushes PFA; `DOES>` rewrites the last word's code field to run the `DOES>` thread after pushing PFA. ITC makes this clean. **Extended** (structure now, implement after Core).
 
 ### Errors **[§I]**
 
@@ -63,9 +63,9 @@ packages/
 
 `client` and `cli` both depend on `engine`. The `Vm` Effect service lives in **`client`** (keeps `engine` Effect-free); `cli` drives the pure `Forth` core directly. No `shared` / `server`: web-forth is a browser-only static SPA, Forth runs entirely client-side. A `server` + `shared` (Effect RPC, now in core `effect`) would appear only for future share-links / collaboration / server-side persistence.
 
-## v1 word-set **[§T]**
+## Core word-set **[§T]**
 
-This draft under-counted; the authoritative v1 list is `SPEC.md` §I "forth v1 words" (machine-checked by `golden.test.ts`). Recap of what actually ships:
+This draft under-counted; the authoritative Core list is `SPEC.md` §I "forth Core words" (machine-checked by `golden.test.ts`). Recap of what actually ships:
 
 - Arithmetic: `+ - * / mod` (plus `/mod negate 1+ 1-`)
 - Compare / logic: `= <> < > 0= 0< 0> and or xor invert` (Forth uses `invert`, not `not`)
@@ -80,7 +80,7 @@ This draft under-counted; the authoritative v1 list is `SPEC.md` §I "forth v1 w
 - System: `bye abort throw`
 - Prelude (Forth-defined): `?dup nip tuck 2dup 2drop abs min max 0<> true false spaces`
 
-**v2:** `CREATE`/`DOES>`/`>BODY`, `CATCH`, `+LOOP ?DO i j WHILE REPEAT`, char literals, string words (`." s"`), `EVALUATE`/TIB, `[COMPILE]`/`POSTPONE`, `KEY`/`ACCEPT`, localStorage save/load, CM6 syntax mode.
+**Extended:** `CREATE`/`DOES>`/`>BODY`, `CATCH`, `+LOOP ?DO i j WHILE REPEAT`, char literals, string words (`." s"`), `EVALUATE`/TIB, `[COMPILE]`/`POSTPONE`, `KEY`/`ACCEPT`, localStorage save/load, CM6 syntax mode.
 
 ## Foldkit conventions **[§C]**
 
@@ -94,9 +94,9 @@ All engine sub-questions are resolved (grilled 2026-07-13; see `specs/02-engine-
 2. ~~Foldkit effect-dispatch~~ → **Commands** (`update` returns `[Model, Command]`).
 3. ~~Memory size / growth~~ → **fixed 256 KiB** (`02`).
 4. ~~Number bases~~ → **`BASE`, default decimal, `$` hex** (`02`).
-5. ~~Editor bridge~~ → **CodeMirror 6 via `Mount.defineStream`** (`01`). Forth syntax mode deferred to v2.
-6. ~~Prelude / control flow~~ → **minimal TS primitives + `prelude.fth`; v1 control flow as TS immediates** (`02`).
-7. **Persistence** (save/load definitions) → **v2**.
+5. ~~Editor bridge~~ → **CodeMirror 6 via `Mount.defineStream`** (`01`). Forth syntax mode deferred to Extended.
+6. ~~Prelude / control flow~~ → **minimal TS primitives + `prelude.fth`; Core control flow as TS immediates** (`02`).
+7. **Persistence** (save/load definitions) → **Extended**.
 
 Nothing blocks `/ck:spec`.
 

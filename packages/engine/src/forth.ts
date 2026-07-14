@@ -342,7 +342,7 @@ const formatSigned = (n: number, base: number): string => (n | 0).toString(base)
 // Format a cell value as unsigned in the current BASE. Used by `u.`.
 const formatUnsigned = (n: number, base: number): string => (n >>> 0).toString(base)
 
-// Install the v1 primitive word-set (§I.forth). Higher-level words come from the
+// Install the Core primitive word-set (§I.forth). Higher-level words come from the
 // prelude (§T.10). Each primitive raises its own throws (div0 -10, etc.); catching
 // is the outer interpreter's job (§T.7/§T.8).
 const installPrimitives = (f: Forth): void => {
@@ -525,7 +525,7 @@ const installPrimitives = (f: Forth): void => {
     d.push(rem === 0 ? a : a + (CELL - rem))
   })
 
-  // --- I/O (output only, v1) ---
+  // --- I/O (output only, Core) ---
   def('.', () => {
     f.emit(`${formatSigned(d.pop(), f.base())} `)
   })
@@ -604,7 +604,7 @@ const installPrimitives = (f: Forth): void => {
   })
   // (loop): runtime of LOOP. Increment index; if index < limit, branch back to the
   // loop top (next inline cell); else drop the loop control and continue. i/j and
-  // +loop are v2 (§T.21); this ships plain do..loop.
+  // +loop are Extended (§T.21); this ships plain do..loop.
   f.loopXt = def('(loop)', (v) => {
     const index = v.rstack.pop() + 1
     const limit = v.rstack.pop()
@@ -771,7 +771,7 @@ const installPrimitives = (f: Forth): void => {
     true,
   )
 
-  // --- Comments (v1-required: the prelude needs them readable, §02) ---
+  // --- Comments (Core-required: the prelude needs them readable, §02) ---
   // ( ... ) immediate: parse to the closing paren, discard.
   def(
     '(',
@@ -789,7 +789,7 @@ const installPrimitives = (f: Forth): void => {
     true,
   )
 
-  // --- Defining words for data (CREATE-class; DOES> is v2, §V.11) ---
+  // --- Defining words for data (CREATE-class; DOES> is Extended, §V.11) ---
   // variable ( "name" -- ) : CFA=[DOVAR][doesCodeAddr=0][body cell]. Pushes PFA.
   def('variable', () => {
     const name = f.parseName()

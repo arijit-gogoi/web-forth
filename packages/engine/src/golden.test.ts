@@ -177,11 +177,11 @@ describe('§V.4 snapshot is a detached copy', () => {
   })
 })
 
-// The machine-checkable form of "§I is realized": every v1 word the interface
+// The machine-checkable form of "§I is realized": every Core word the interface
 // promises must resolve in a fresh VM. This is the acceptance criterion for
 // "engine complete" and guards against silent word-set drift.
-describe('§I v1 word-set is fully installed', () => {
-  const V1_WORDS = [
+describe('§I Core word-set is fully installed', () => {
+  const CORE_WORDS = [
     // arith
     '+', '-', '*', '/', 'mod', '/mod', '=', '<>', '<', '>', '0=', '0<', '0>', 'and', 'or', 'xor', 'invert',
     // stack
@@ -205,9 +205,9 @@ describe('§I v1 word-set is fully installed', () => {
     '0<>', 'true', 'false', 'variable', 'constant', 'spaces',
   ]
 
-  test('every §I v1 word resolves in a fresh VM', () => {
+  test('every §I Core word resolves in a fresh VM', () => {
     const f = new Forth()
-    const missing = V1_WORDS.filter((w) => f.dict.find(w) === null)
+    const missing = CORE_WORDS.filter((w) => f.dict.find(w) === null)
     expect(missing).toEqual([])
   })
 })
