@@ -7,7 +7,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "gen:prelude": "node scripts/gen-prelude.mjs",
     "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/gen-prelude.mjs",
     "test": "vitest run"
   },
   "devDependencies": {

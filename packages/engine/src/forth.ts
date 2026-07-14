@@ -18,11 +18,13 @@ import {
   NAME_OFFSET,
 } from './dictionary'
 import {
+  ForthFault,
   ForthThrow,
   THROW_COMPILE_ONLY,
   THROW_DIV_ZERO,
   THROW_UNDEFINED_WORD,
 } from './errors'
+import { PRELUDE } from './prelude.generated'
 import { DOCOL, DOCONST, DOVAR, EXIT, Inner, type Routine } from './inner'
 import { CELL, Memory } from './memory'
 import { messageFor, THROW_ABORT } from './messages'
@@ -94,14 +96,28 @@ export class Forth {
     this.boot()
   }
 
-  // Register the inner behaviors and install every primitive. Called at construction
-  // and by reset(); code[] already holds just HALT (index 0) at this point.
+  // Register the inner behaviors, install every primitive, and load the Forth prelude.
+  // Called at construction and by reset(); code[] already holds just HALT (index 0).
   private boot(): void {
     this.docolIndex = this.inner.addRoutine(DOCOL)
     this.exitIndex = this.inner.addRoutine(EXIT)
     this.dovarIndex = this.inner.addRoutine(DOVAR)
     this.doconstIndex = this.inner.addRoutine(DOCONST)
     installPrimitives(this)
+    this.loadPrelude()
+  }
+
+  // §V.16: interpret the prelude at boot; it must complete with throwCode==null.
+  // A throw here is a build/prelude defect, not a user error, so it is fatal (a
+  // ForthFault), never a silent half-initialized VM.
+  private loadPrelude(): void {
+    const result = this.interpret(PRELUDE)
+    if (result.throwCode !== null) {
+      throw new ForthFault(
+        `prelude failed to load (throw ${result.throwCode}): ${result.output.trim()}`,
+      )
+    }
+    this.output = '' // discard prelude output; user runs start clean
   }
 
   // Register a JS primitive: routine + dictionary header + CFA cell = routine index.
@@ -705,6 +721,44 @@ const installPrimitives = (f: Forth): void => {
     },
     true,
   )
+
+  // --- Comments (v1-required: the prelude needs them readable, §02) ---
+  // ( ... ) immediate: parse to the closing paren, discard.
+  def(
+    '(',
+    () => {
+      f.parse(')')
+    },
+    true,
+  )
+  // \ immediate: skip to end of line.
+  def(
+    '\\',
+    () => {
+      f.parse('\n')
+    },
+    true,
+  )
+
+  // --- Defining words for data (CREATE-class; DOES> is v2, §V.11) ---
+  // variable ( "name" -- ) : CFA=[DOVAR][doesCodeAddr=0][body cell]. Pushes PFA.
+  def('variable', () => {
+    const name = f.parseName()
+    if (name === null) throw new ForthThrow(THROW_UNDEFINED_WORD, 'variable')
+    const cfa = f.dict.header(name)
+    f.mem.setCell(cfa, f.dovarIndex)
+    f.comma(0) // doesCodeAddr slot (2-slot layout, §V.11)
+    f.comma(0) // one body cell, initialized to 0
+  })
+  // constant ( n "name" -- ) : CFA=[DOCONST][value]. Pushes the stored value.
+  def('constant', () => {
+    const name = f.parseName()
+    if (name === null) throw new ForthThrow(THROW_UNDEFINED_WORD, 'constant')
+    const value = d.pop()
+    const cfa = f.dict.header(name)
+    f.mem.setCell(cfa, f.doconstIndex)
+    f.comma(value)
+  })
 
   // --- System ---
   def('bye', () => {

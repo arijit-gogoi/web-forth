@@ -3,6 +3,9 @@ dist/
 *.log
 .DS_Store
 
+# generated from prelude.fth by scripts/gen-prelude.mjs (regenerated on pretest/prebuild)
+packages/engine/src/prelude.generated.ts
+
 # scratch / handoff space (not tracked)
 .handoff/
 
