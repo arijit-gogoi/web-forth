@@ -25,6 +25,10 @@ export class ForthFault extends Error {
 }
 
 // Throw codes used so far. The full standard table is assembled in §T.8.
+export const THROW_STACK_OVERFLOW = -3 // §V.9 data stack push past capacity
+export const THROW_STACK_UNDERFLOW = -4 // §V.9 data stack pop when empty
+export const THROW_RSTACK_OVERFLOW = -5 // §V.9 return stack push past capacity
+export const THROW_RSTACK_UNDERFLOW = -6 // §V.9 return stack pop when empty
 export const THROW_DICT_OVERFLOW = -8 // §V.7 alloc reaches exec-harness region
 export const THROW_INVALID_ADDR = -9 // memory address out of range
 export const THROW_UNALIGNED = -23 // §V.6 cell access on a non-CELL-aligned address
