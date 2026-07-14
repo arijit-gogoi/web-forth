@@ -57,6 +57,36 @@ const startState = (): ForthTokenState => ({ afterColon: false })
 
 const copyState = (state: ForthTokenState): ForthTokenState => ({ afterColon: state.afterColon })
 
+// Advance the stream to just past `close` (or to end of line if it never appears).
+// Shared by the paren-comment and string scanners; the opener is already consumed.
+const consumeTo = (stream: StringStream, close: string): void => {
+  while (!stream.eol()) {
+    if (stream.next() === close) {
+      return
+    }
+  }
+}
+
+// A number in the engine's syntax: a signed integer, or a $-prefixed hex literal.
+const isNumber = (word: string): boolean =>
+  /^[+-]?\d+$/.test(word) || /^[+-]?\$[0-9a-f]+$/.test(word)
+
+// Classify a plain whitespace-delimited token (already matched + lowercased). Sets
+// afterColon when the token is `:` so the next word is tagged as a definition name.
+const classifyWord = (word: string, state: ForthTokenState): string | null => {
+  if (word === ':') {
+    state.afterColon = true
+    return 'keyword'
+  }
+  if (KEYWORDS.has(word)) {
+    return 'keyword'
+  }
+  if (isNumber(word)) {
+    return 'number'
+  }
+  return null // user/prelude words: no highlight
+}
+
 const token = (stream: StringStream, state: ForthTokenState): string | null => {
   // Whitespace: consume and emit no token.
   if (stream.eatSpace()) {
@@ -65,8 +95,7 @@ const token = (stream: StringStream, state: ForthTokenState): string | null => {
 
   const ch = stream.peek()
 
-  // Line comment: \ to end of line (must be followed by space or be the whole token, but
-  // the engine treats a leading \ token as a comment; match that).
+  // Line comment: \ to end of line (the engine treats a leading \ token as a comment).
   if (ch === '\\') {
     stream.skipToEnd()
     return 'comment'
@@ -75,22 +104,14 @@ const token = (stream: StringStream, state: ForthTokenState): string | null => {
   // Paren comment: ( ... ) on one line. Consume through the closing paren (or to end).
   if (ch === '(') {
     stream.next() // consume '('
-    while (!stream.eol()) {
-      if (stream.next() === ')') {
-        break
-      }
-    }
+    consumeTo(stream, ')')
     return 'comment'
   }
 
-  // String words: s" ... " and ." ... " . The opening word is s"/." then text to the close
-  // quote. Only when the quote form actually starts here (s"/."), else fall through.
+  // String words: s" ... " and ." ... " . The opening word is s"/." then text to the
+  // close quote. Only when the quote form actually starts here, else fall through.
   if (stream.match(/^(s"|\.")/)) {
-    while (!stream.eol()) {
-      if (stream.next() === '"') {
-        break
-      }
-    }
+    consumeTo(stream, '"')
     state.afterColon = false
     return 'string'
   }
@@ -106,26 +127,13 @@ const token = (stream: StringStream, state: ForthTokenState): string | null => {
     return null
   }
 
-  // A plain whitespace-delimited token.
+  // A plain whitespace-delimited token: classify it, or advance safely if none matched.
   const matched = stream.match(WORD)
   if (matched === null || matched === false) {
     stream.next() // safety: never return without consuming
     return null
   }
-  const word = stream.current().toLowerCase()
-
-  if (word === ':') {
-    state.afterColon = true
-    return 'keyword'
-  }
-  if (KEYWORDS.has(word)) {
-    return 'keyword'
-  }
-  // Numbers: a signed integer, or a $-prefixed hex literal (the engine's number syntax).
-  if (/^[+-]?\d+$/.test(word) || /^[+-]?\$[0-9a-f]+$/.test(word)) {
-    return 'number'
-  }
-  return null // user/prelude words: no highlight
+  return classifyWord(stream.current().toLowerCase(), state)
 }
 
 export const forthStreamParser: StreamParser<ForthTokenState> = {

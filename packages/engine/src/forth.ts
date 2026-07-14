@@ -188,26 +188,36 @@ export class Forth {
       if (name === null) break
       const found = this.dict.find(name)
       if (found) {
-        // §V.11 compile semantics: in compile state, non-immediate words are appended
-        // to the current definition; immediate words run now.
-        if (this.regs.state === STATE_COMPILE && !found.immediate) {
-          this.comma(found.xt)
-        } else {
-          this.execute(found.xt)
-        }
+        this.interpretWord(found.xt, found.immediate)
       } else {
-        const n = this.parseNumber(name)
-        if (n === null) {
-          throw new ForthThrow(THROW_UNDEFINED_WORD, name)
-        }
-        if (this.regs.state === STATE_COMPILE) {
-          // Compile a literal: lit reads the next inline cell at run time.
-          this.comma(this.litXt)
-          this.comma(n)
-        } else {
-          this.dstack.push(n)
-        }
+        this.interpretNumber(name)
       }
+    }
+  }
+
+  // §V.11 compile semantics: in compile state a non-immediate word is appended to the
+  // current definition; an immediate word (and any word in interpret state) runs now.
+  private interpretWord(xt: number, immediate: boolean): void {
+    if (this.regs.state === STATE_COMPILE && !immediate) {
+      this.comma(xt)
+    } else {
+      this.execute(xt)
+    }
+  }
+
+  // A token that is not a defined word must be a number. In compile state it compiles
+  // as an inline literal (lit reads the next cell at run time); in interpret state it
+  // is pushed. An unparseable token is an undefined-word throw (§V.10).
+  private interpretNumber(name: string): void {
+    const n = this.parseNumber(name)
+    if (n === null) {
+      throw new ForthThrow(THROW_UNDEFINED_WORD, name)
+    }
+    if (this.regs.state === STATE_COMPILE) {
+      this.comma(this.litXt)
+      this.comma(n)
+    } else {
+      this.dstack.push(n)
     }
   }
 
