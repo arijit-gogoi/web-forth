@@ -137,3 +137,13 @@ export const DOVAR: Routine = (vm) => {
 export const DOCONST: Routine = (vm) => {
   vm.dstack.push(vm.mem.cellAt(vm.regs.w + CELL))
 }
+
+// DODOES: runtime for a CREATE ... DOES> word (§V.11, Extended). Push the PFA
+// (CREATE 2-slot layout: w + 2*CELL), then thread into the DOES> code whose
+// address lives in the doesCodeAddr slot (w + CELL). Like DOCOL, it pushes the
+// caller's ip first so the DOES> code's trailing EXIT returns correctly.
+export const DODOES: Routine = (vm) => {
+  vm.dstack.push(vm.regs.w + 2 * CELL) // PFA
+  vm.rstack.push(vm.regs.ip) // return addr for the DOES> code's EXIT
+  vm.regs.ip = vm.mem.cellAt(vm.regs.w + CELL) // doesCodeAddr slot -> DOES> thread
+}
