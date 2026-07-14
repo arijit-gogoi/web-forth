@@ -89,6 +89,8 @@ export class Forth {
   plusLoopXt = 0
   qDoXt = 0
   dodoesXt = 0
+  sQuoteXt = 0
+  dotQuoteXt = 0
 
   // BASE is a real memory cell (authentic: `base @` / `base !` work), NOT a JS
   // register. baseAddr is its PFA, cached at install. Single source of truth for the
@@ -341,6 +343,13 @@ const digitValue = (c: number): number => {
   if (c >= 0x41 && c <= 0x5a) return c - 0x41 + 10
   if (c >= 0x61 && c <= 0x7a) return c - 0x61 + 10
   return -1
+}
+
+// Round a byte address up to the next CELL boundary. Used by the compiled string
+// words to skip an inline [count][bytes] payload to the next aligned xt (§V.20).
+const alignUp = (addr: number): number => {
+  const rem = addr & (CELL - 1)
+  return rem === 0 ? addr : addr + (CELL - rem)
 }
 
 // Format a cell value in the current BASE (signed). Used by `.`.
@@ -666,6 +675,26 @@ const installPrimitives = (f: Forth): void => {
       v.regs.ip += CELL // step past the skip-target cell into the body
     }
   })
+  // (s"): runtime of a compiled s" (§V.20). On entry ip points at the inline count
+  // byte, followed by that many string bytes, then padding to the next CELL. Push
+  // ( c-addr u ) and advance ip past the cell-aligned byte payload (the compiler
+  // aligned it, so the next xt reads cleanly, precedent: lit). c-addr = ip+1.
+  f.sQuoteXt = def('(s")', (v) => {
+    const count = v.mem.byteAt(v.regs.ip)
+    v.dstack.push(v.regs.ip + 1) // c-addr: first string byte
+    v.dstack.push(count) // u: length
+    v.regs.ip = alignUp(v.regs.ip + 1 + count) // skip [count][bytes] to next CELL
+  })
+  // (."): runtime of a compiled ." (§V.20). Same inline [count][bytes] layout as
+  // (s"), but TYPE the bytes instead of pushing the span, then advance ip past the
+  // cell-aligned payload.
+  f.dotQuoteXt = def('(.")', (v) => {
+    const count = v.mem.byteAt(v.regs.ip)
+    let s = ''
+    for (let i = 0; i < count; i++) s += String.fromCharCode(v.mem.byteAt(v.regs.ip + 1 + i))
+    f.emit(s)
+    v.regs.ip = alignUp(v.regs.ip + 1 + count)
+  })
 
   // --- Defining + state words ---
   // : ( "name" -- ) create a colon header (CFA=DOCOL), smudge it, enter compile.
@@ -963,6 +992,64 @@ const installPrimitives = (f: Forth): void => {
     }
     d.push(toBody(cfa))
   })
+
+  // --- Strings + char literals (Extended, §V.20, §V.23) ---
+  // char ( "name" -- c ) : push the ASCII code of the first char of the next word.
+  // Interpret-time word (NOT compile-only): `char a` at top level pushes 97.
+  def('char', () => {
+    const name = f.parseName()
+    if (name === null || name.length === 0) throw new ForthThrow(THROW_UNDEFINED_WORD, 'char')
+    d.push(name.charCodeAt(0))
+  })
+  // [char] (immediate, compile-only) ( "name" -- ) : compile the first char's code
+  // as an inline literal. The compile-time counterpart of char.
+  def(
+    '[char]',
+    () => {
+      f.compileOnly()
+      const name = f.parseName()
+      if (name === null || name.length === 0) throw new ForthThrow(THROW_UNDEFINED_WORD, '[char]')
+      f.comma(f.litXt)
+      f.comma(name.charCodeAt(0))
+    },
+    true,
+  )
+  // Compile an inline counted string into the current thread (§V.20): the runtime
+  // marker xt, then a count byte + the string bytes, then align so the next xt is
+  // cell-aligned. Shared by s" and ." (they differ only in the runtime xt). The
+  // leading space after the word is a delimiter, not string content, so skip it
+  // (parseName left >IN on it); then parse to the closing quote.
+  const compileString = (runtimeXt: number): void => {
+    const src = f.regs.source
+    if (f.regs.toIn < src.length && src.charCodeAt(f.regs.toIn) === 0x20) f.regs.toIn++
+    const text = f.parse('"')
+    f.comma(runtimeXt)
+    const bytes = f.mem.allot(1) // count byte
+    f.mem.setByte(bytes, text.length & 0xff)
+    for (let i = 0; i < text.length; i++) {
+      f.mem.setByte(f.mem.allot(1), text.charCodeAt(i) & 0xff)
+    }
+    f.mem.align() // pad the payload so the following xt lands on a CELL boundary
+  }
+  // s" ( "ccc<quote>" -- ) compiled: ( -- c-addr u ) at run time. Compile-only
+  // (§V.23): interpret-state s" has no thread to inline into -> THROW -14.
+  def(
+    's"',
+    () => {
+      f.compileOnly()
+      compileString(f.sQuoteXt)
+    },
+    true,
+  )
+  // ." ( "ccc<quote>" -- ) compiled: prints ccc at run time. Compile-only (§V.23).
+  def(
+    '."',
+    () => {
+      f.compileOnly()
+      compileString(f.dotQuoteXt)
+    },
+    true,
+  )
 
   // --- System ---
   def('bye', () => {
