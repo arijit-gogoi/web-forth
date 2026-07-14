@@ -17,14 +17,10 @@ import {
   NAME_LEN_MASK,
   NAME_OFFSET,
 } from './dictionary'
-import {
-  ForthFault,
-  ForthThrow,
-  THROW_DIV_ZERO,
-  THROW_UNDEFINED_WORD,
-} from './errors'
+import { ForthThrow, THROW_DIV_ZERO, THROW_UNDEFINED_WORD } from './errors'
 import { DOCOL, DOCONST, DOVAR, EXIT, Inner, type Routine } from './inner'
 import { CELL, Memory } from './memory'
+import { messageFor, THROW_ABORT } from './messages'
 import { makeRegisters, STATE_INTERPRET, type Registers } from './registers'
 import { makeDataStack, makeReturnStack, type Stack } from './stack'
 
@@ -190,18 +186,21 @@ export class Forth {
       return { output: this.output, throwCode: null, stack: this.stackSnapshot() }
     } catch (e) {
       if (e instanceof ForthThrow) {
-        // §T.8 will abort() + append a gforth-style message here. Stub: record the
-        // code and return so the outer loop never leaks a Forth error as a JS throw.
-        this.handleThrow(e)
+        // §V.10: print a gforth-style message, ABORT (clear both stacks + state),
+        // stop processing the rest of the buffer, and return. Forth errors never
+        // leak as JS exceptions (§V.5).
+        this.output += messageFor(e.code, e.detail)
+        this.abort()
         return { output: this.output, throwCode: e.code, stack: this.stackSnapshot() }
       }
       throw e // ForthFault or any genuine VM fault -> Effect E-channel (§V.5)
     }
   }
 
-  // Error handling hook. §T.8 replaces the body with abort() + gforth messages.
-  // Stub for §T.7: reset interpreter state so the instance stays usable.
-  protected handleThrow(_e: ForthThrow): void {
+  // §V.10: clear the data AND return stacks, reset STATE to interpret, stop the
+  // trampoline. Resetting rsp is load-bearing: a ForthThrow unwinds the JS stack
+  // without running pending EXITs, so rsp is left dirty mid-colon (§B.1).
+  abort(): void {
     this.regs.dsp = 0
     this.regs.rsp = 0
     this.regs.running = false
@@ -492,5 +491,14 @@ const installPrimitives = (f: Forth): void => {
   // --- System ---
   def('bye', () => {
     f.regs.running = false
+  })
+  // throw ( code -- ) : 0 is a no-op; non-zero unwinds to the top-level handler.
+  def('throw', () => {
+    const code = d.pop()
+    if (code !== 0) throw new ForthThrow(code)
+  })
+  // abort ( -- ) : unconditional THROW -1.
+  def('abort', () => {
+    throw new ForthThrow(THROW_ABORT)
   })
 }
