@@ -50,3 +50,20 @@ In `packages/client`, follow Foldkit style (lint-enforced): Schema-typed Model, 
 - `pnpm -r test` — run every package's tests.
 - `pnpm --filter @web-forth/engine test` — engine tests only.
 - `pnpm --filter @web-forth/client dev` — run the app (once the client app exists).
+
+## Static analysis (fallow)
+
+`fallow` is the dead-code / duplication / complexity gate. A PreToolUse hook
+(`.claude/hooks/fallow-gate.sh`) runs `fallow audit` on every `git commit`/`git push`
+and **blocks the commit when the verdict is `fail`**; `--no-verify` is not a fix.
+
+- **Per-task order:** build/simplify → `fallow audit --format json --quiet --explain`
+  → advisor → commit. Run fallow BEFORE the pre-commit advisor so the advisor reviews
+  clean code. Reproduce that exact audit command to predict the gate.
+- **For ANY fallow work invoke both skills:** the official `fallow:fallow` (the general
+  tool manual — commands, issue types, flags, MCP) AND this repo's `/fallow-extra`
+  (`.claude/skills/fallow-extra/`, the web-forth gate + `.fallowrc.json` + the settled
+  tradeoffs). They compose: official = how the tool works, fallow-extra = how it is
+  wired here.
+- `publicPackages` = `@web-forth/engine` ONLY (client + cli are leaf apps). Dependency
+  versions still live only in `package.json`; fallow config carries no version numbers.

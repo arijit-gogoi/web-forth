@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "src/index.{ts,tsx,js,jsx}",
+    "src/main.{ts,tsx,js,jsx}",
+    "src/entry.{ts,tsx,js,jsx}"
+  ],
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ]
+  },
+  "ignorePatterns": [
+    "repos/**",
+    "**/*.d.ts",
+    "**/prelude.generated.ts"
+  ],
+  "publicPackages": [
+    "@web-forth/engine"
+  ],
+  "ignoreDependencies": [],
+  "duplicates": {
+    "minOccurrences": 3,
+    "ignore": [
+      "repos/**"
+    ]
+  },
+  "ignoreExports": [],
+  "rules": {}
+}
