@@ -2,7 +2,7 @@
 
 ## §G GOAL
 
-Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real memory cells, 2 stacks, inner interpreter, CREATE/DOES> — ⊥ easyforth closures.
+Production-usable, authentic indirect-threaded Forth. Engine (`@web-forth/engine`) = the product: a complete, correct Forth system, usable standalone (cli drives it headless). Real memory cells, 2 stacks, inner interpreter, CREATE/DOES>, THROW/CATCH — a real threaded-code VM, ⊥ easyforth closures, ⊥ teaching toy. Browser REPL (split editor/console + stack/dict views) = ONE frontend over the engine, ⊥ the point. Every decision framed "is this a correct, complete Forth?" first — UI serves the language, ⊥ reverse.
 
 ## §C CONSTRAINTS
 
@@ -28,6 +28,7 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 - svc: `Vm` Effect service (∈ client) wraps `Forth`. `interpret(src) → Effect<RunResult, ForthFault>`, `stackSnapshot`, `dictSnapshot`, `reset`. provided app-wide `Layer<Vm>` (foldkit `resources`).
 - forth Core words: arith `+ - * / mod = <> < > 0= 0< 0> and or xor invert`; stack `dup drop swap over rot >r r>`; mem `@ ! c@ c! +! , here allot cells cell+ align aligned`; io `. .s u. emit cr space type`; compile `: ; [ ] immediate literal ' [']`; control (immediate) `if else then begin until again do loop`; base `base decimal hex` + `$hex`; comments `( )` `\`; sys `bye abort throw`. prelude adds `?dup nip tuck 2dup 2drop abs min max negate 1+ 1- 0<> true false variable constant space spaces`.
 - forth Extended words: `catch` (`( xt -- code )`, nested→nearest); control `+loop ?do i j while repeat`; strings `s" ." char [char]`; `evaluate ( c-addr u -- )`. (Core `throw` gains authentic `catch` semantics.)
+- forth Standard words (production completeness): control `recurse leave case of endof endcase`; stack `depth 2swap 2over -rot`; bit `2* 2/ lshift rshift`; arith/compare `*/ */mod u< u>`; mem `move fill`. (`recurse` fixes a real gap: no self-reference today since `:` smudges LATEST until `;`, §V11.)
 - Extended editor: CM6 `EditorView` via `Mount.defineStream` replaces the textarea; feeds same `UpdatedSource`/`PressedRun` facts + `LoadExample` Command. Optional Forth syntax mode (`@codemirror/language`).
 - Extended persistence: editor buffer text autosaved (debounced) → `localStorage` key `web-forth.source`, restored @ boot ∈ `init`. ⊥ dictionary state (re-run reconstructs words).
 
@@ -67,6 +68,10 @@ V21: (Extended) persistence fail-silent — `localStorage` quota/disabled → no
 V22: (Extended) `+loop ( n -- )` terminates on boundary crossing (sign of `index-limit` flips), ⊥ `index<limit` (existing `(loop)` forth.ts:611 upward-only). supports negative step. `?do` skips body when `limit==index` @ entry. `i` = innermost loop index (rstack top pair), `j` = next-outer.
 V23: (Extended) interpreted `s"`/`."` (interpret state, no thread to inline into) → compile-only: `THROW -14` outside a definition. (compiled path = bytes inline ∈ thread, §V20.) ⊥ transient side-buffer either mode.
 V24: (Extended) `>BODY` defined only for CREATE-class words (CFA routine == `DOVAR`/`DODOES`, 2-slot §V11). other xt (`constant`=`[DOCONST][value]` 1-slot forth.ts:803, colon) → ⊥ valid body; guard or `THROW`.
+V25: (Standard) `recurse` (immediate, compile-only) compiles the xt of the definition-in-progress (the smudged LATEST) into the current thread ∴ a word calls itself despite being hidden until `;` (§V11). ⊥ a runtime word; ⊥ resolve via FIND (LATEST hidden). state ⊥ compile → `THROW -14`.
+V26: (Standard) `leave` (immediate, compile-only, ∈ do/?do body) compiles an unconditional forward branch out of the innermost loop, resolved by `loop`/`+loop` to just-past the loop (reuses the §V22 `[skipSlot, loopTop]` convention). runtime ! also drop the loop control (limit+index) off rstack before the exit. ≥1 `leave` per loop allowed. state ⊥ compile → `THROW -14`.
+V27: (Standard) `case of endof endcase` = compile-time immediates (like if/else/then, §V15), backpatch via the data-stack compile-stack. `of` = compile `over =` + `?branch` to the next `of`; `endof` = `branch` to after `endcase`; `endcase` resolves all pending `endof` targets + compiles a `drop` of the case selector. compile-only → `THROW -14` in interpret state.
+V28: (Standard) syntax-highlighter honesty — the CM6 tokenizer KEYWORDS set (forthLanguage.ts) ! be a SUBSET of engine-answerable words (primitives ∪ prelude ∪ immediates). a guard test asserts ∀ keyword → engine `find`s it (⊥ highlight a word that would `THROW -13`). prevents the `recurse`/`leave` drift (highlighted-but-absent) recurring.
 
 ## §T TASKS
 
@@ -99,6 +104,13 @@ T23|x|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline 
 T24|x|Extended: EVALUATE + TIB-in-memory — nested text interpret|V18
 T25|x|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3
 T26|x|Extended: CM6 Forth syntax mode — `StreamLanguage` tokenizer (keyword/comment/number/string/def) + `@codemirror/theme-one-dark` palette|R2
+
+**Standard** = production word-set completeness (T27+): the ANS-ish words real code reaches for. Engine-first (the product); highlighter kept honest (§V28).
+
+T27|.|Standard: `recurse` (immediate) — compile smudged-LATEST xt into current thread; self-reference despite hide|V25,V15
+T28|.|Standard: `leave` (immediate) — forward-branch out of do/?do, drop loop control off rstack, resolved by loop/+loop|V26,V22
+T29|.|Standard: stack/bit/arith/mem words — `depth 2swap 2over -rot 2* 2/ lshift rshift */ */mod u< u>` + `move fill` (primitives + prelude where natural)|I.forth
+T30|.|Standard: `case of endof endcase` immediates + sync tokenizer KEYWORDS + subset guard test|V27,V28
 
 ## §B BUGS
 

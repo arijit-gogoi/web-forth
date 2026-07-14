@@ -1,6 +1,6 @@
 # CLAUDE.md — web-forth
 
-Authentic **indirect-threaded (ITC) Forth VM** with a browser REPL. Inspired by easyforth, but a real threaded-code virtual machine (memory cells, two stacks, inner interpreter, `CREATE`/`DOES>`), not JS closures.
+A **production-usable, authentic indirect-threaded (ITC) Forth** that happens to ship with a browser frontend (via Foldkit). This is a real threaded-code virtual machine — memory cells, two stacks, inner interpreter, `CREATE`/`DOES>` — not a teaching toy and not JS closures. The engine (`@web-forth/engine`) is the product: a complete, correct Forth system usable on its own (the `cli` drives it headless). The web REPL is one frontend over that engine, not the point of the project. Frame every decision as "is this a correct, complete Forth?" first; the UI serves the language, never the reverse.
 
 ## Source of truth
 

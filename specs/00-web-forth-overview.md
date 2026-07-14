@@ -4,9 +4,9 @@
 
 ## Vision **[§G]**
 
-An **authentic Forth** that runs in the browser with an interactive REPL — inspired by [easyforth](https://skilldrick.github.io/easyforth/), but not a closure-toy: a **real indirect-threaded (ITC) virtual machine** with genuine memory cells, two stacks, an inner interpreter, and `CREATE`/`DOES>`. Educational value = you can see how Forth *actually* works, not a JS-function-per-word simulation.
+A **production-usable, authentic Forth** — a real indirect-threaded (ITC) virtual machine with genuine memory cells, two stacks, an inner interpreter, and `CREATE`/`DOES>`. The engine (`@web-forth/engine`) is the product: a complete, correct Forth system usable on its own, driven headless by the `cli`. It is a real threaded-code VM, not a JS-function-per-word simulation and not a teaching toy.
 
-UI = **split editor + console**: a code editor pane, a console/output pane, plus live views of the data stack and dictionary.
+The browser REPL is **one frontend** over that engine (via Foldkit), not the point of the project: a split editor + console with live views of the data stack and dictionary. Every decision is framed as "is this a correct, complete Forth?" first — the UI serves the language, never the reverse.
 
 ## Locked decisions **[§C]**
 
@@ -14,7 +14,7 @@ Decided in discussion (2026-07-13):
 
 | Area | Decision | Notes |
 |------|----------|-------|
-| Fidelity | **Authentic threaded Forth** | Real inner interpreter, threaded code, `CREATE`/`DOES>`, memory cells. Not the easyforth closure approach. |
+| Fidelity | **Authentic, production-usable threaded Forth** | Real inner interpreter, threaded code, `CREATE`/`DOES>`, memory cells. A complete Forth system (the engine is the product), not a closure simulation and not a teaching toy. |
 | Threading | **Indirect-threaded (ITC)** | Flat `Int32Array` memory; code fields hold routine indices; `DOCOL`/`EXIT`. Enables genuine `@ ! , here allot`, `>BODY`, `EXECUTE`, `CREATE`/`DOES>`. |
 | UI | **Split editor + console** | Editor pane + console + stack view + dictionary view. |
 | Language | **TypeScript** (strict) | Match Foldkit. Version pinned in `package.json`. |
