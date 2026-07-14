@@ -64,7 +64,7 @@ T1|x|scaffold pnpm workspace: engine/client/cli, pnpm-workspace.yaml, root+pkg t
 T2|x|engine: ArrayBuffer mem 256 KiB + Int32Array/Uint8Array views + registers + reserved exec-harness region|V6,V7
 T3|x|engine: data+return stacks 1024 cells + push/pop + over/underflow throw|V9
 T4|x|engine: dictionary header build + FIND (case-insensitive) + LATEST + smudge/immediate flags|V11
-T5|.|engine: inner interpreter — code[] table, NEXT trampoline + step-budget watchdog, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8,V14
+T5|x|engine: inner interpreter — code[] table, NEXT trampoline + step-budget watchdog, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8,V14
 T6|.|engine: primitives — stack/arith/compare/logic/mem/return-stack/io|I.lib
 T7|.|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT, compile-only guard|V8,V9,V10,V15
 T8|.|engine: ForthThrow unwind + top-level CATCH + ABORT + gforth-style messages|V5,V9,V10
