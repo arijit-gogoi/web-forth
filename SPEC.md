@@ -8,13 +8,14 @@ Authentic indirect-threaded Forth VM + split editor/console browser REPL. Real m
 
 - TS strict. monorepo, pnpm workspaces. node + pnpm per foldkit `engines`.
 - 3 pkgs: `@web-forth/engine` (pure VM, TS only, ⊥ Effect/Foldkit), `@web-forth/client` (Foldkit + CM6 SPA + Vm svc), `@web-forth/cli` (headless node REPL). client & cli → dep engine.
-- browser-only static SPA. Forth runs 100% client-side. ⊥ server, ⊥ shared pkg, ⊥ RPC.
+- app = browser-only static SPA. Forth runs 100% client-side. ⊥ server, ⊥ shared pkg, ⊥ RPC. cli = node dev/aux tool over engine, ≠ shipped app.
 - Effect v4 == foldkit peer dep (⊥ bump independent). `@effect/platform-browser` likewise. v4 source ∈ effect-smol repo. exact ver ∈ `package.json`.
 - Foldkit. Elm Architecture: 1 immutable Model, 1 update, side effects ∈ Commands. build Vite + `@foldkit/vite-plugin`.
 - editor CodeMirror 6 (`@codemirror/{state,view,commands,language}`) via foldkit `Mount.defineStream`. v1 = textarea; CM6 = v2.
 - test Vitest. engine plain vitest; client `@effect/vitest` (foldkit peer ver) + happy-dom.
 - threading indirect (ITC), routine-index dispatch. byte-addressed 32-bit cells over `ArrayBuffer`. fixed 256 KiB mem, 1024-cell data+return stacks. configurable, ⊥ surfaced in UI.
 - errors authentic `THROW`/`CATCH` integer codes; `ABORT` + continue. Forth errors = data; Effect E-channel = VM faults only.
+- prelude = `prelude.fth` (source of truth) → codegen `prelude.generated.ts` (`export const PRELUDE`) at build. engine loads identically in node (cli/vitest) & browser. ⊥ Vite-only `?raw` (engine runs in node cli).
 - client follows foldkit idioms: Schema Model, `Match`, `Array<T>`, ⊥ bracket index, ⊥ em dash. ref `repos/foldkit/CLAUDE.md` + `.claude/skills/effect-ts`.
 - vendored source = read-only reference: `repos/{effect-smol,foldkit,codemirror/*}`. read source > guess. see `AGENTS.md`.
 - design detail ∈ `specs/00-web-forth-overview.md`, `specs/01-foldkit-patterns.md`, `specs/02-engine-design.md`.
@@ -47,10 +48,14 @@ V5: Forth errors ride success channel as `RunResult.throwCode` + output text. Ef
 V6: `@ !` require cell-aligned addr (`a & 3 = 0`). debug build asserts.
 V7: alloc (`,` `allot` header) reaching exec-harness region → `THROW -8`.
 V8: `execute()` non-reentrant (single scratch). outer interpreter runs tokens in order. nested `EVALUATE` ⊥ till v2.
-V9: over/underflow → `THROW -3/-4` (data), `-5/-6` (return); div-by-0 → `-10`; undefined word → `-13`.
+V9: over/underflow → `THROW -3/-4` (data), `-5/-6` (return); div-by-0 → `-10`; undefined word → `-13`; compile-only word in interpret → `-14`; step-budget exceeded → `-28`.
 V10: `ABORT` clears data stack + `state=interpret`. interpreter prints gforth-style msg + continues.
 V11: colon CFA = [DOCOL]; CREATE-class CFA = [DOVAR][doesCodeAddr] (2-slot, DOES>-ready); `>BODY` = CFA+2·CELL for CREATE words.
 V12: client follows foldkit idioms (Schema Model, `Match`, `Array<T>`, ⊥ bracket index, ⊥ em dash). lint-enforced.
+V13: ⊥ concurrent `Vm.interpret` (shared mutable core). `update` ignores `ClickedRun`/`PressedRun` while console `AsyncData==Loading`; Vm serializes interpret.
+V14: inner loop enforces step budget. exceed → `THROW -28` (keeps main thread responsive). v2 → Web Worker for true interrupt.
+V15: outer interpreter rejects compile-only words when `state==interpret` → `THROW -14`.
+V16: `prelude.fth` `interpret`s @ boot with `throwCode==null`; else fatal `ForthFault` (⊥ silent half-init).
 
 ## §T TASKS
 
@@ -59,17 +64,17 @@ T1|.|scaffold pnpm workspace: engine/client/cli, pnpm-workspace.yaml, root+pkg t
 T2|.|engine: ArrayBuffer mem 256 KiB + Int32Array/Uint8Array views + registers + reserved exec-harness region|V6,V7
 T3|.|engine: data+return stacks 1024 cells + push/pop + over/underflow throw|V9
 T4|.|engine: dictionary header build + FIND (case-insensitive) + LATEST + smudge/immediate flags|V11
-T5|.|engine: inner interpreter — code[] table, NEXT trampoline, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8
+T5|.|engine: inner interpreter — code[] table, NEXT trampoline + step-budget watchdog, DOCOL/EXIT/DOVAR/DOCONST/HALT, execute()|V1,V8,V14
 T6|.|engine: primitives — stack/arith/compare/logic/mem/return-stack/io|I.lib
-T7|.|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT|V8,V9,V10
+T7|.|engine: outer interpreter — parseName/parse, number parse (BASE + $), interpret loop, QUIT, compile-only guard|V8,V9,V10,V15
 T8|.|engine: ForthThrow unwind + top-level CATCH + ABORT + gforth-style messages|V5,V9,V10
 T9|.|engine: compile mode : ; [ ] immediate + lit/branch/?branch + control-flow immediates (if/else/then, begin/until/again, do/loop)|V11
-T10|.|engine: comments ( ) \\ + prelude.fth bundled raw (Vite ?raw) + boot load|C
+T10|.|engine: comments ( ) \\ + prelude.fth + codegen prelude.generated.ts (const PRELUDE) at build (node+browser+vitest) + boot load (fail → ForthFault)|C,V16
 T11|.|engine: RunResult + stackSnapshot(copy) + dictSnapshot + reset; unit tests plain vitest, easyforth golden cases|I.lib,V4
 T12|.|cli: node REPL over Forth (interactive + pipe .fth)|I.cli
-T13|.|client: Vm Effect service + Layer<Vm> over Forth; @effect/vitest channel tests|I.svc,V2,V5
+T13|.|client: Vm Effect service (serialize interpret) + Layer<Vm> over Forth; verify effect v4 Effect.Service/Layer + @effect/vitest API vs repos/effect-smol; channel tests|I.svc,V2,V5,V13
 T14|.|client: foldkit app skeleton (Model/Message/init/update/view/entry) + Runtime.makeApplication+run|R4
-T15|.|client: RunSource Command (reads Vm) → CompletedRun{output,stack,throwCode} / FailedRun|R3,V5
+T15|.|client: RunSource Command (reads Vm, ignored while Loading) → CompletedRun{output,stack,throwCode} / FailedRun|R3,V5,V13
 T16|.|client: v1 textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
 T17|.|client: console pane (AsyncData Idle/Running/Ok/Err, keyed) + data-stack pane + dictionary pane|V3,V4
 T18|.|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + snapshot render|V3
