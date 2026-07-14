@@ -3,4 +3,7 @@ dist/
 *.log
 .DS_Store
 
+# scratch / handoff space (not tracked)
+.handoff/
+
 # NOTE: repos/ is intentionally NOT ignored — it holds vendored subtree source.
