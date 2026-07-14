@@ -3,10 +3,12 @@
 Code-grounded extraction of Foldkit patterns from vendored source, feeding the web-forth spec.
 
 - Source root (read-only): `repos/foldkit/`
-- Foldkit version: `0.128.0` (`packages/foldkit/package.json:3`)
-- Peer deps: `effect@4.0.0-beta.88`, `@effect/platform-browser@4.0.0-beta.88` (`packages/foldkit/package.json:160`)
+- Foldkit version: pinned in each package's `package.json` (`packages/foldkit/package.json:3`)
+- Peer deps `effect` + `@effect/platform-browser`: versions dictated by Foldkit's peer deps, pinned in `package.json` (`packages/foldkit/package.json:160`)
 
 Every API claim below cites a real `path:line` under `repos/foldkit/`. Paths are relative to that root. Conventions followed: Schema-typed Model, full names (`Message`, not `Msg`), `Array<T>` (never `T[]`), no bracket indexing, `Match` over `switch`, no em dashes.
+
+> **Build status.** The v1 client (§T.14-18) is built on the patterns in sections A/B/D/F: `makeApplication`+`run`, the `RunSource`/`ResetVm` Commands over the `Vm` service, the textarea editor (section D), and the `AsyncData` console. The **CodeMirror 6 editor (section C) and the `Mount.defineStream` bridge are v2 (§T.19) and NOT yet built.** That section is grounded design intent; its CM6-side calls are reasoned from the CM6 API, not vendored-cited. The Subscription patterns (section E) are likewise reference, not yet used.
 
 ## The one throughline that governs web-forth
 
@@ -24,10 +26,10 @@ Two files: `main.ts` (Model / Message / init / update / view) and `entry.ts` (bo
 
 Subpath exports used (all from the `foldkit` package; see the barrel `packages/foldkit/src/index.ts:1` and `exports` map `packages/foldkit/package.json:9`):
 
-- `foldkit` -> `Runtime`, `Command`, `Mount`, `Subscription`, `ManagedResource`, ...
+- `foldkit` -> `Runtime`, `Command`, `Mount`, `Subscription`, `ManagedResource`, `AsyncData`, ...
 - `foldkit/html` -> `html`, `Document`, `Html`, `Attribute`
 - `foldkit/message` -> `m` (Message constructor)
-- `foldkit/schema` -> `ts` (tagged-struct constructor), `S`
+- `foldkit/schema` -> `ts` (tagged-struct constructor). It does NOT export `S`; `Schema as S` and `Match as M` come from the `effect` barrel (`import { Match as M, Schema as S } from 'effect'`, `examples/counter/src/main.ts:1`).
 - `foldkit/struct` -> `evo` (immutable Model update)
 
 **Model** is a Schema struct; the type is derived (`examples/counter/src/main.ts:10`):
@@ -76,7 +78,7 @@ const application = Runtime.makeApplication({
 Runtime.run(application)
 ```
 
-- `makeApplication` signature: `packages/foldkit/src/runtime/runtime.ts:2707` (no-flags, no-routing overload). Config shape `BaseApplicationConfig` at `packages/foldkit/src/runtime/runtime.ts:690`: `Model`, `update`, `view`, `subscriptions?`, `container: HTMLElement | null`, `resources?: Layer.Layer<Resources>`, `managedResources?`, `devTools?`.
+- `makeApplication` signature: `packages/foldkit/src/runtime/runtime.ts:2707` (no-flags, no-routing overload). The config is layered: `BaseApplicationConfig` (`runtime.ts:690`) has `Model`, `update`, `view`, `container: HTMLElement | null`, and optionals `subscriptions?`, `resources?: Layer.Layer<Resources>`, `managedResources?`, `devTools?`, `ports?`, `crash?`, `slow?`, `freezeModel?`, `preserveScroll?`. **`init` is required but lives in `ApplicationConfig`** (`runtime.ts:807`, `= BaseApplicationConfig & { init }`), not in Base. `resources` defaults its type param to `never`, so omitting it is well-typed.
 - `run`: `packages/foldkit/src/runtime/runtime.ts:3165` (`BrowserRuntime.runMain`).
 - **`makeApplication` view returns `Document` and owns `<head>`/title.** If web-forth is embedded as one pane inside a larger host page, use `makeElement` instead (`packages/foldkit/src/runtime/runtime.ts:2931`); its view returns `Html` and never touches `<head>` (`packages/foldkit/src/html/index.ts:139`, note on `Document`). Default to `makeApplication` for a standalone app.
 
@@ -124,7 +126,7 @@ FailedFetchWeather: ({ error }) =>
   [evo(model, { weather: () => WeatherAsyncData.Failure({ error }) }), []],
 ```
 
-Naming (per `repos/foldkit/CLAUDE.md`): `Succeeded*`/`Failed*` when failure is meaningful; `Completed*` for fire-and-forget acks that `update` no-ops on (see `LockBodyScroll` -> `CompletedLockBodyScroll`, `examples/map/src/main.ts:210`). `AsyncData` models the Idle/Loading/Success/Failure lifecycle in the Model (`examples/weather/src/main.ts:23`); web-forth's console output should use the same shape.
+Naming (per `repos/foldkit/CLAUDE.md`): `Succeeded*`/`Failed*` when failure is meaningful; `Completed*` for fire-and-forget acks that `update` no-ops on (see `LockBodyScroll` -> `CompletedLockBodyScroll`, `examples/map/src/main.ts:210`). `AsyncData` models a request lifecycle in the Model (`examples/weather/src/main.ts:23`); web-forth's console output uses the same shape. Note `AsyncData` has **six** states (`Idle | Loading | Refreshing | Failure | Stale | Success`, `packages/foldkit/src/asyncData/asyncData.ts:55`), not four; you construct typed values via `AsyncData.Schema(dataSchema, errorSchema)` (which returns `{ schema, Idle, Loading, Success, Failure, ... }`) and put `.schema` in the Model. Rendering collapses to four visual branches through `matchDataSplitEmpty` (below), so web-forth never has to handle `Refreshing`/`Stale` (it replaces console output each run, it does not reload-while-holding-data).
 
 This is the model for web-forth's **RunSource** (see the recommendation section).
 
@@ -316,7 +318,7 @@ Within a pane, key each branch that swaps on a union: the console (Idle | Runnin
 | Editor pane (CodeMirror 6) | `Mount.defineStream` (construction-time `updateListener` + `keymap` -> Message stream) + module registry for the `EditorView`; push content via `view.dispatch({ changes })` Command | `mount/index.ts:380`, `map/src/mapHost.ts:9`, `map/src/main.ts:113` |
 | Editor pane (v1 fallback) | `h.textarea` with `h.Value` + `h.OnInput` | `html/index.ts:548`, `:505`; `form/src/main.ts:412` |
 | Run source | `Command.define(...)` reading the `Vm` service; `Succeeded/FailedRun` fold via `Effect.catch` | `command/index.ts:111`; `weather/src/main.ts:225`, `:217` |
-| Console output pane | Model field as `AsyncData` (Idle/Running/Ok/Error); render with `keyed` per branch | `weather/src/main.ts:23`, `:294` |
+| Console output pane | Model field as `AsyncData` (via `AsyncData.Schema`); render with `matchDataSplitEmpty` (idle/loading/failure/data) + `keyed` per branch | `weather/src/main.ts:23`, `:294`, `asyncData/asyncData.ts:318` |
 | Data-stack view | `h.ul`/`h.pre` over `ReadonlyArray<number>` snapshot in Model; key items by stable index-identity or render as one `pre` | `map/src/main.ts:556` |
 | Dictionary view | `h.ul` over `Array.map` of word entries, keyed by word name | `map/src/main.ts:556` |
 | Ctrl+Enter runs | `h.OnKeyDownPreventDefault` on the editor pane (scoped to focus) | `html/index.ts:479` |
@@ -414,6 +416,6 @@ export const RunSource = Command.define('RunSource', { source: S.String }, Compl
 
 > **Error-model refinement (see `specs/02-engine-design.md`).** Ordinary Forth errors (`word ?`, stack underflow) are NOT Effect failures. They ride `CompletedRun` as data: `output` includes the error text and `CompletedRun` also carries a `throwCode`. `FailedRun` (the `Effect.catch` branch) is reserved for genuine VM faults (`ForthFault`), which are rare. So `RunSource` almost always yields `CompletedRun`. The engine uses `THROW`/`CATCH`/`ABORT`; the outer interpreter prints the error and continues.
 
-**Console output, data-stack, dictionary views.** Console: a Model field typed as `AsyncData` (Idle | Loading | Ok | Error), rendered with one `keyed` branch per state (section F, `weather/src/main.ts:294`), each key an identity string, never the output text. Data stack: render the `ReadonlyArray<number>` snapshot as a single `h.pre`, or an `h.ul` keyed by stable position-identity. Dictionary: `h.ul` over `Array.map` of word entries, keyed by word name.
+**Console output, data-stack, dictionary views.** Console: a Model field typed via `AsyncData.Schema(RunData, S.String)`, rendered with `matchDataSplitEmpty` (one `keyed` branch each for idle / loading / failure / data, `weather/src/main.ts:294`), each key an identity string, never the output text. A Forth error is the DATA branch (`Success` carrying a non-null `throwCode`), not the failure branch; failure is only the rare `ForthFault`. Data stack: render the `ReadonlyArray<number>` snapshot as a single `h.pre`, or an `h.ul` keyed by stable position-identity. Dictionary: `h.ul` over `Array.map` of word entries, keyed by word name.
 
 **Bootstrap/main call.** `Runtime.makeApplication({ Model, init, update, view, subscriptions, container: document.getElementById('root'), resources: VmLayer })` then `Runtime.run(application)` (section A; `resources` field at `runtime.ts:717`). Split into `main.ts` (Model/Message/init/update/view/Commands) and `entry.ts` (the `makeApplication` + `run`), per the counter layout.

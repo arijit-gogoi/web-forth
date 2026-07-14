@@ -17,14 +17,14 @@ Decided in discussion (2026-07-13):
 | Fidelity | **Authentic threaded Forth** | Real inner interpreter, threaded code, `CREATE`/`DOES>`, memory cells. Not the easyforth closure approach. |
 | Threading | **Indirect-threaded (ITC)** | Flat `Int32Array` memory; code fields hold routine indices; `DOCOL`/`EXIT`. Enables genuine `@ ! , here allot`, `>BODY`, `EXECUTE`, `CREATE`/`DOES>`. |
 | UI | **Split editor + console** | Editor pane + console + stack view + dictionary view. |
-| Language | **TypeScript** (strict, TS `^6.0.3`) | Match Foldkit. |
-| Effect system | **Effect v4**, pinned **`4.0.0-beta.88`** | Version **dictated by Foldkit's `peerDependencies`** — `foldkit@0.128.0` (latest npm release, == vendored `main`) declares `effect: 4.0.0-beta.88` + `@effect/platform-browser: 4.0.0-beta.88`. Do **not** bump independently of Foldkit. Source lives in the `effect-smol` repo. |
-| UI framework | **Foldkit `0.128.0`** | Elm Architecture: Model / Message / Command / Subscription / Mount. Apps use `@foldkit/vite-plugin`; `create-foldkit-app` scaffolds. |
-| Editor | **CodeMirror 6** via Foldkit **`Mount.defineStream`** | Packages `@codemirror/{state,view,commands,language}`, vendored to `repos/codemirror/`. CM6 is TEA-shaped (immutable `EditorState`, transactions, `EditorView` projection). The imperative `EditorView` lives in a module registry (out of the Model); edits and a Mod-Enter keymap emit Messages. Full patterns: `specs/01-foldkit-patterns.md`. |
+| Language | **TypeScript** (strict) | Match Foldkit. Version pinned in `package.json`. |
+| Effect system | **Effect v4** | Version **dictated by Foldkit's `peerDependencies`** (both `effect` and `@effect/platform-browser`). Do **not** bump independently of Foldkit; read the exact version from `package.json`. Source lives in the `effect-smol` repo. |
+| UI framework | **Foldkit** | Elm Architecture: Model / Message / Command / Subscription / Mount. Apps use `@foldkit/vite-plugin`; `create-foldkit-app` scaffolds. Version pinned in `package.json`. |
+| Editor | **CodeMirror 6** via Foldkit **`Mount.defineStream`** (v2) | Packages `@codemirror/{state,view,commands,language}`, vendored to `repos/codemirror/`. CM6 is TEA-shaped (immutable `EditorState`, transactions, `EditorView` projection). The imperative `EditorView` lives in a module registry (out of the Model); edits and a Mod-Enter keymap emit Messages. v1 ships a textarea; CM6 is v2 (§T.19). Full patterns: `specs/01-foldkit-patterns.md`. |
 | Repo shape | **Monorepo of packages** | pnpm workspaces (`packages/*`). |
-| Runtime / PM | **Node + pnpm** | Mirror Foldkit: `pnpm@11.8.0`, node `>=20.19 || >=22.12`. |
-| Test runner | **Vitest `^4.1.9`** via **`@effect/vitest@4.0.0-beta.88`** | Effect-aware. DOM tests via **`happy-dom`**. Foldkit exposes a `foldkit/test/vitest` entry. |
-| Build | **Vite 8** + `@foldkit/vite-plugin` | Match Foldkit toolchain. |
+| Runtime / PM | **Node + pnpm** | Mirror Foldkit's `engines`; versions pinned in `package.json`. |
+| Test runner | **Vitest** via **`@effect/vitest`** | Effect-aware. DOM tests via **`happy-dom`**. Foldkit exposes a `foldkit/test/vitest` entry. Versions pinned in `package.json`. |
+| Build | **Vite** + `@foldkit/vite-plugin` | Match Foldkit toolchain. |
 
 ## The seam — VM (mutable) vs Foldkit (immutable) **[§I][§V]**
 
@@ -65,15 +65,22 @@ packages/
 
 ## v1 word-set **[§T]**
 
-- Arithmetic/logic: `+ - * / mod = < > and or not`
-- Stack: `dup drop swap over rot`
-- I/O: `. .s emit cr`
-- Compile: `: ;` (+ `[ ]`)
-- Control flow (immediate): `if else then`, `begin until`, `do loop`
-- Return stack: `>r r>`
-- Memory (authentic): `@ ! c@ c! here allot ,` — `variable constant`
+This draft under-counted; the authoritative v1 list is `SPEC.md` §I "forth v1 words" (machine-checked by `golden.test.ts`). Recap of what actually ships:
 
-**v2:** `CREATE`/`DOES>`, `>BODY`, `does>`, `i j`, `+loop`, `?do`, `r@`, `[COMPILE] POSTPONE IMMEDIATE`, strings, `BASE`.
+- Arithmetic: `+ - * / mod` (plus `/mod negate 1+ 1-`)
+- Compare / logic: `= <> < > 0= 0< 0> and or xor invert` (Forth uses `invert`, not `not`)
+- Stack: `dup drop swap over rot`
+- Return stack: `>r r> r@`
+- I/O: `. .s u. emit cr space type`
+- Compile / defining: `: ; [ ] immediate literal ' [']` and `variable constant`
+- Control flow (immediate): `if else then`, `begin until again`, `do loop`
+- Memory (authentic): `@ ! c@ c! +! , here allot cells cell+ align aligned`
+- Base: `base decimal hex` (plus a `$` hex prefix)
+- Comments: `( )`, `\`
+- System: `bye abort throw`
+- Prelude (Forth-defined): `?dup nip tuck 2dup 2drop abs min max 0<> true false spaces`
+
+**v2:** `CREATE`/`DOES>`/`>BODY`, `CATCH`, `+LOOP ?DO i j WHILE REPEAT`, char literals, string words (`." s"`), `EVALUATE`/TIB, `[COMPILE]`/`POSTPONE`, `KEY`/`ACCEPT`, localStorage save/load, CM6 syntax mode.
 
 ## Foldkit conventions **[§C]**
 
