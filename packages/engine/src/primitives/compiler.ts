@@ -9,7 +9,7 @@
 // f as *Xt). The immediates are compile-only (§V.15); their backpatch targets are
 // absolute addresses kept on the data stack during compilation.
 
-import { ForthThrow, THROW_UNDEFINED_WORD } from '../errors'
+import { ForthThrow, THROW_COMPILE_ONLY, THROW_UNDEFINED_WORD } from '../errors'
 import { CELL } from '../memory'
 import { STATE_COMPILE, STATE_INTERPRET } from '../registers'
 import type { Forth } from '../forth'
@@ -109,6 +109,17 @@ const installLoopRuntimes = (f: Forth): void => {
       v.rstack.push(index)
       v.regs.ip += CELL // step past the skip-target cell into the body
     }
+  })
+  // (leave): runtime of LEAVE (§V.26). UNLOOP first — drop the loop control pair
+  // [limit, index] off the return stack (index is on top, per (do)'s push order) —
+  // THEN branch unconditionally to the just-past-loop target in the next inline cell
+  // (loop/+loop patched it). Dropping the pair is load-bearing: the post-loop code
+  // (and the §V.22 skip path) assumes the control pair is already gone, and a plain
+  // branch that skipped this drop would leave the return stack dirty.
+  f.leaveXt = def('(leave)', (v) => {
+    v.rstack.pop() // index
+    v.rstack.pop() // limit
+    v.regs.ip = v.mem.cellAt(v.regs.ip) // branch past the loop
   })
 }
 
@@ -360,7 +371,7 @@ const installDoLoops = (f: Forth): void => {
   // ?do resolves to just-past-the-loop; plain do uses the 0 sentinel (nothing to
   // resolve). loop/+loop pop loopTop, compile the runtime + loop-top target, then
   // resolve skipSlot if non-zero. This keeps one closer path for do and ?do.
-  // do: compile (do); no skip slot (sentinel 0); push loop top.
+  // do: compile (do); no skip slot (sentinel 0); push loop top; open a leave-list.
   def(
     'do',
     () => {
@@ -368,10 +379,12 @@ const installDoLoops = (f: Forth): void => {
       f.comma(f.doXt)
       d.push(0) // skipSlot sentinel: plain do has no forward target
       d.push(f.mem.here) // loop top
+      f.leaveLists.push([]) // §V.26: collect this loop's leave targets
     },
     true,
   )
-  // ?do: compile (?do) + a forward skip-target cell; push [skipSlot, loopTop].
+  // ?do: compile (?do) + a forward skip-target cell; push [skipSlot, loopTop]; open
+  // a leave-list.
   def(
     '?do',
     () => {
@@ -379,10 +392,30 @@ const installDoLoops = (f: Forth): void => {
       f.comma(f.qDoXt)
       d.push(f.comma(0)) // skipSlot: (?do) reads it; loop resolves it past the loop
       d.push(f.mem.here) // loop top
+      f.leaveLists.push([]) // §V.26
     },
     true,
   )
-  // loop: compile (loop) + loop-top target; resolve the ?do skip slot to here.
+  // leave (immediate, compile-only, §V.26): compile (leave) + a placeholder target
+  // cell, and record that cell in the innermost open loop's leave-list so loop/+loop
+  // patches it to just-past-the-loop. A do/?do must be open (a leave-list on top);
+  // outside one it is a stray leave -> THROW -14 (compile-only, and there is nothing
+  // to leave). Note: leave resolves to the SAME address the ?do skipSlot resolves to,
+  // but by a different mechanism (per-cell patch here vs the single skipSlot cell).
+  def(
+    'leave',
+    () => {
+      f.compileOnly()
+      const list = f.leaveLists[f.leaveLists.length - 1]
+      if (list === undefined) throw new ForthThrow(THROW_COMPILE_ONLY, 'leave outside a loop')
+      f.comma(f.leaveXt)
+      list.push(f.comma(0)) // placeholder; loop/+loop patches it to just-past-loop
+    },
+    true,
+  )
+  // loop: compile (loop) + loop-top target; resolve the ?do skip slot AND every
+  // leave target to here (just-past-loop). skipSlot and the leave-list resolve to the
+  // same HERE but stay separate (§V.26).
   def(
     'loop',
     () => {
@@ -390,8 +423,7 @@ const installDoLoops = (f: Forth): void => {
       const loopTop = d.pop()
       f.comma(f.loopXt)
       f.comma(loopTop)
-      const skipSlot = d.pop()
-      if (skipSlot !== 0) f.mem.setCell(skipSlot, f.mem.here)
+      resolveLoopExits(f, d.pop())
     },
     true,
   )
@@ -403,11 +435,21 @@ const installDoLoops = (f: Forth): void => {
       const loopTop = d.pop()
       f.comma(f.plusLoopXt)
       f.comma(loopTop)
-      const skipSlot = d.pop()
-      if (skipSlot !== 0) f.mem.setCell(skipSlot, f.mem.here)
+      resolveLoopExits(f, d.pop())
     },
     true,
   )
+}
+
+// Shared close-out for loop/+loop (§V.22, §V.26): resolve the ?do forward skip slot
+// (0 sentinel for plain do) and pop this loop's leave-list, patching every recorded
+// leave target — all to HERE, the just-past-loop address.
+const resolveLoopExits = (f: Forth, skipSlot: number): void => {
+  if (skipSlot !== 0) f.mem.setCell(skipSlot, f.mem.here)
+  const list = f.leaveLists.pop()
+  if (list !== undefined) {
+    for (const cell of list) f.mem.setCell(cell, f.mem.here)
+  }
 }
 
 const installComments = (f: Forth): void => {

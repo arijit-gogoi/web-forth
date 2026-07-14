@@ -93,9 +93,17 @@ export class Forth {
   loopXt = 0
   plusLoopXt = 0
   qDoXt = 0
+  leaveXt = 0
   dodoesXt = 0
   sQuoteXt = 0
   dotQuoteXt = 0
+
+  // §V.26: compile-time stack of leave-lists, one entry per open do/?do. Each entry
+  // collects the placeholder target cells emitted by `leave` inside that loop; the
+  // closing loop/+loop pops the entry and patches every cell to just-past-the-loop.
+  // A JS array (not the fixed data-stack frame) because the count is variable and
+  // nesting must not collide with the [skipSlot, loopTop] compile-stack cells.
+  readonly leaveLists: Array<Array<number>> = []
 
   // BASE is a real memory cell (authentic: `base @` / `base !` work), NOT a JS
   // register. baseAddr is its PFA, cached at install. Single source of truth for the
@@ -383,6 +391,7 @@ export class Forth {
     this.regs.running = false
     this.mem.here = 0
     this.output = ''
+    this.leaveLists.length = 0 // drop any half-open loop's leave-list (§V.26)
     // Re-run the boot sequence: reset code[] to just HALT, reserve the addr-0 boot
     // cell (Dictionary owns it), then re-register behaviors + primitives.
     this.inner.installHalt()
