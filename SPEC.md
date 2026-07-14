@@ -43,7 +43,7 @@ R6|ITC in JS|routine-index dispatch (CFA = int index ∈ JS `code[]` table) repl
 
 ## §V INVARIANTS
 
-V1: inner `NEXT` = single flat `while`. behavior routines ⊥ recurse into `run()`. ⊥ per-instruction Effect.
+V1: inner `NEXT` = single flat `while`. behavior routines ⊥ recurse into `run()` — EXCEPT sanctioned nested-run sites `catch`/`evaluate` (§V17/§V18), which ! save+restore full ctx so the enclosing trampoline survives. ⊥ per-instruction Effect.
 V2: Effect ! only @ outer-interpreter / top-level `execute` boundary. `@web-forth/engine` ⊥ import `effect` \| `foldkit`.
 V3: mutable handles (`EditorView`, `Forth`/`Vm`) ∉ Foldkit Model. Model holds ! `Option<hostId>` + Schema snapshots.
 V4: data-stack snapshot → Model = copied `ReadonlyArray<number>`. ⊥ live `Int32Array`.
@@ -59,11 +59,14 @@ V13: ⊥ concurrent `Vm.interpret` (shared mutable core). `update` ignores `Clic
 V14: inner loop enforces step budget. exceed → `THROW -28` (keeps main thread responsive). Extended → Web Worker for true interrupt.
 V15: compile-only words (control-flow immediates: `;` if/then/…) self-check `state`; run @ `state==interpret` → `THROW -14`. no header flag (lenflags byte full: 0x80|0x40|0x3F); guard ∈ each word.
 V16: `prelude.fth` `interpret`s @ boot with `throwCode==null`; else fatal `ForthFault` (⊥ silent half-init).
-V17: (Extended) `catch ( xt -- code )` saves dsp+rsp depths before running xt; on `ForthThrow` restores both depths + pushes code (0 = clean exit). `throw 0` = no-op (⊥ unwind, ANS). nested `catch` → nearest.
-V18: (Extended) `evaluate ( c-addr u -- )` saves + restores exec-harness region + `>IN`/`source` around the nested interpret (harness non-reentrant, §V.8). ⊥ leak nested parse state to caller.
+V17: (Extended) `catch ( xt -- code )` runs xt via a nested `execute`→`run()` (a §V1 carve-out). ∴ ! save `{dsp,rsp,ip,w,harness,running}` before, restore ALL on BOTH paths: clean exit (nested HALT clears `running`+clobbers `ip`/`w`/harness → enclosing loop dies if unrestored) AND `ForthThrow` (unwinds past nested run). clean → push 0; throw → restore dsp+rsp to saved depths + push code. `throw 0` = no-op (⊥ unwind, ANS). nested `catch` → nearest.
+V18: (Extended) `evaluate ( c-addr u -- )` runs a nested text-interpret (a §V1 carve-out, harness non-reentrant §V.8). ⊥ call public `interpret()` (it wipes `output`, forth.ts:229). ! save+restore `{ip,w,harness,running,source,toIn}` + preserve accumulated `output` around the nested loop. ⊥ leak nested parse state to caller.
 V19: (Extended) CM6 `EditorView` (mutable handle) ∉ Model (extends §V.3). lives ∈ module registry keyed `hostId`; Model holds ! `Option<hostId>`. external writes → Command dispatches CM6 transaction (⊥ re-mount; mount args captured @ mount ∴ seed arg named `initialDoc`). unmount → `view.destroy()` + registry delete.
 V20: (Extended) compiled `s"`/`."` store bytes inline ∈ definition thread; `(s")` runtime reads inline count + bytes, pushes `( c-addr u )`, advances `ip` past the cell-aligned byte payload (precedent: `lit`). ⊥ transient side-buffer, ⊥ `'c'` shortcut (`char`/`[char]` for char codes).
 V21: (Extended) persistence fail-silent — `localStorage` quota/disabled → no-op Message, ⊥ crash the run loop. autosave debounced on edit; buffer text only.
+V22: (Extended) `+loop ( n -- )` terminates on boundary crossing (sign of `index-limit` flips), ⊥ `index<limit` (existing `(loop)` forth.ts:611 upward-only). supports negative step. `?do` skips body when `limit==index` @ entry. `i` = innermost loop index (rstack top pair), `j` = next-outer.
+V23: (Extended) interpreted `s"`/`."` (interpret state, no thread to inline into) → compile-only: `THROW -14` outside a definition. (compiled path = bytes inline ∈ thread, §V20.) ⊥ transient side-buffer either mode.
+V24: (Extended) `>BODY` defined only for CREATE-class words (CFA routine == `DOVAR`/`DODOES`, 2-slot §V11). other xt (`constant`=`[DOCONST][value]` 1-slot forth.ts:803, colon) → ⊥ valid body; guard or `THROW`.
 
 ## §T TASKS
 
@@ -88,11 +91,11 @@ T15|x|client: RunSource Command (reads Vm, ignored while Loading) → CompletedR
 T16|x|client: Core textarea editor (Value+OnInput→UpdatedSource) + Ctrl+Enter (OnKeyDownPreventDefault)|I.app
 T17|x|client: console pane (AsyncData Idle/Running/Ok/Err, keyed) + data-stack pane + dictionary pane|V3,V4
 T18|x|client: 3-pane layout (editor \| console \| inspector) + wire RunSource + snapshot render|V3
-T19|.|Extended: CM6 editor plain — Mount.defineStream + editorHost registry + LoadExample Command (⊥ syntax mode yet)|R2,V3,V19
-T20|.|Extended: CREATE/DOES>/>BODY + DODOES|V11
+T19|.|Extended: CM6 editor plain — add `@codemirror/{state,view,commands,language}` deps (⊥ declared/installed yet; T1 gap) + Mount.defineStream + editorHost registry + LoadExample Command, feeds same `UpdatedSource` (⊥ syntax mode yet)|R2,V3,V19
+T20|.|Extended: CREATE/DOES>/>BODY + DODOES|V11,V24
 T21|.|Extended: CATCH/THROW authentic — `catch ( xt -- code )`, nested→nearest, `throw 0` no-op|V17
-T22|.|Extended: control-flow completion — `+loop ?do i j while repeat`|V15
-T23|.|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline ∈ thread via `(s")`, ⊥ transient buf, ⊥ `'c'`|V20
+T22|.|Extended: control-flow completion — `+loop ?do i j while repeat`|V15,V22
+T23|.|Extended: strings/char proper Forth — `s" ." char [char]`, bytes inline ∈ thread via `(s")`, ⊥ transient buf, ⊥ `'c'`|V20,V23
 T24|.|Extended: EVALUATE + TIB-in-memory — nested text interpret|V18
 T25|.|Extended: save/load — editor buffer ∈ localStorage, debounced autosave, restore @ init|V21,V3
 T26|.|Extended: CM6 Forth syntax mode (`@codemirror/language`)|R2
